@@ -58,9 +58,9 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       .sort((a, b) => a.order - b.order)
       .map((lane, index): Lane => ({ ...lane, order: index }));
     const laneMap = new Map(sanitizedLanes.map((lane) => [lane.id, lane] as const));
-    const sanitizedSteps = persistedState.steps
-      .map((step: Step, index: number) => sanitizeStep(step, sanitizedLanes, index))
-      .filter((step) => laneMap.has(step.laneId));
+    const sanitizedSteps = (persistedState.steps as Step[])
+      .map((step, index) => sanitizeStep(step, sanitizedLanes, index))
+      .filter((step): step is Step => laneMap.has(step.laneId));
     const sanitizedConnections = persistedState.connections
       .map((connection: Connection) => sanitizeConnection(connection, sanitizedSteps))
       .filter((connection): connection is Connection => Boolean(connection));
