@@ -681,7 +681,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         action: 'update_connection_control',
         targetType: 'connection',
         targetId: connectionId,
-        payload: control ?? null,
+        payload: control ? { x: control.x, y: control.y } : undefined,
       });
     },
 
