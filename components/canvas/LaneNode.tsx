@@ -1,10 +1,14 @@
 import type { NodeProps } from 'reactflow';
 
 interface LaneNodeData {
+  id: string;
   title: string;
   color: string;
   height: number;
   width: number;
+  pendingRow: number | null;
+  rowHeight: number;
+  lanePadding: number;
 }
 
 const hexToRgb = (hex: string | undefined) => {
@@ -53,21 +57,30 @@ const getContrastingTextColor = ({ r, g, b }: { r: number; g: number; b: number 
 };
 
 export const LaneNode = ({ data }: NodeProps<LaneNodeData>) => {
-  const { title, color, height, width } = data;
+  const { id, title, color, height, width, pendingRow, rowHeight, lanePadding } = data;
   const baseColor = hexToRgb(color);
   const headerBackground = mixRgb(baseColor, { r: 255, g: 255, b: 255 }, 0.72);
   const borderTint = mixRgb(baseColor, { r: 15, g: 23, b: 42 }, 0.15);
   const headerTextColor = getContrastingTextColor(headerBackground);
+  const highlightTop = pendingRow !== null ? lanePadding + pendingRow * rowHeight : null;
 
   return (
     <div
+      data-lane-id={id}
       style={{
         borderColor: `${color}40`,
         height,
         width,
+        cursor: 'default',
       }}
-      className="pointer-events-none flex h-full w-full flex-col rounded-2xl border border-dashed border-slate-200 bg-white/70 shadow-inner"
+      className="relative flex h-full w-full flex-col rounded-2xl border border-dashed border-slate-200 bg-white/70 shadow-inner"
     >
+      {highlightTop !== null && (
+        <div
+          className="pointer-events-none absolute left-0 right-0 border border-dashed border-blue-400/70 bg-blue-200/30"
+          style={{ top: highlightTop, height: rowHeight }}
+        />
+      )}
       <div
         className="px-4 py-3"
         style={{

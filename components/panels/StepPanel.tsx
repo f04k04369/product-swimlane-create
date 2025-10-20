@@ -30,6 +30,7 @@ export const StepPanel = () => {
   const updateConnectionEndpoints = useDiagramStore((state) => state.updateConnectionEndpoints);
   const reverseConnection = useDiagramStore((state) => state.reverseConnection);
   const removeConnection = useDiagramStore((state) => state.removeConnection);
+  const clearPendingInsert = useDiagramStore((state) => state.clearPendingInsert);
 
   const selectedStepId = selection.steps[0] ?? null;
   const selectedConnectionId = selection.connections[0] ?? null;
@@ -94,11 +95,13 @@ export const StepPanel = () => {
     const hasControlPoint = Boolean(selectedConnection.control);
 
     const handleLabelChange = (label: string) => {
+      clearPendingInsert();
       updateConnectionLabel(selectedConnection.id, label);
       setSelection({ lanes: [], steps: [], connections: [selectedConnection.id] });
     };
 
     const handleMarkerUpdate = (updates: Partial<{ startMarker: 'none' | 'arrow' | 'dot'; endMarker: 'none' | 'arrow' | 'dot'; markerSize: number }>) => {
+      clearPendingInsert();
       updateConnectionMarker(selectedConnection.id, updates);
       setSelection({ lanes: [], steps: [], connections: [selectedConnection.id] });
     };
@@ -106,6 +109,7 @@ export const StepPanel = () => {
     const handleSourceStepChange = (event: ChangeEvent<HTMLSelectElement>) => {
       const nextSourceId = event.target.value;
       if (!nextSourceId) return;
+      clearPendingInsert();
       updateConnectionEndpoints(selectedConnection.id, { sourceId: nextSourceId });
       setSelection({ lanes: [], steps: [], connections: [selectedConnection.id] });
     };
@@ -113,11 +117,13 @@ export const StepPanel = () => {
     const handleTargetStepChange = (event: ChangeEvent<HTMLSelectElement>) => {
       const nextTargetId = event.target.value;
       if (!nextTargetId) return;
+      clearPendingInsert();
       updateConnectionEndpoints(selectedConnection.id, { targetId: nextTargetId });
       setSelection({ lanes: [], steps: [], connections: [selectedConnection.id] });
     };
 
     const handleReverse = () => {
+      clearPendingInsert();
       reverseConnection(selectedConnection.id);
       setSelection({ lanes: [], steps: [], connections: [selectedConnection.id] });
     };
@@ -252,6 +258,7 @@ export const StepPanel = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => {
+                  clearPendingInsert();
                   updateConnectionControl(selectedConnection.id, null);
                   setSelection({ lanes: [], steps: [], connections: [selectedConnection.id] });
                 }}
@@ -271,6 +278,7 @@ export const StepPanel = () => {
             variant="outline"
             className="w-full bg-red-50 text-red-600 hover:bg-red-100"
             onClick={() => {
+              clearPendingInsert();
               removeConnection(selectedConnection.id);
               setSelection({ lanes: [], steps: [], connections: [] });
             }}
@@ -289,6 +297,7 @@ export const StepPanel = () => {
   const handleStepDragStart = (event: DragEvent<HTMLLIElement>, stepId: string) => {
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/plain', stepId);
+    clearPendingInsert();
     setDraggedStepId(stepId);
   };
 
@@ -300,6 +309,7 @@ export const StepPanel = () => {
     const { diagram: latest } = useDiagramStore.getState();
     const target = latest.steps.find((step) => step.id === stepId);
     if (target) {
+      clearPendingInsert();
       setSelection({ lanes: [target.laneId], steps: [target.id], connections: [] });
     }
   };
@@ -312,6 +322,7 @@ export const StepPanel = () => {
     const rect = event.currentTarget.getBoundingClientRect();
     const dropAfter = event.clientY - rect.top > rect.height / 2;
     const targetIndex = dropAfter ? index + 1 : index;
+    clearPendingInsert();
     reorderStep(draggedId, targetIndex);
     persistSelectionFor(draggedId);
     setDraggedStepId(null);
@@ -321,6 +332,7 @@ export const StepPanel = () => {
     event.preventDefault();
     const draggedId = event.dataTransfer.getData('text/plain');
     if (!draggedId) return;
+    clearPendingInsert();
     reorderStep(draggedId, laneStepsOrdered.length);
     persistSelectionFor(draggedId);
     setDraggedStepId(null);
@@ -335,17 +347,20 @@ export const StepPanel = () => {
     const nextLaneId = event.target.value;
     const laneIndex = lanes.findIndex((lane) => lane.id === nextLaneId);
     if (laneIndex !== -1) {
+      clearPendingInsert();
       updateStep(selectedStep.id, { laneId: nextLaneId });
       setSelection({ lanes: [nextLaneId], steps: [selectedStep.id], connections: [] });
     }
   };
 
   const handleKindChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    clearPendingInsert();
     changeStepKind(selectedStep.id, event.target.value as StepKind);
   };
 
   const handleRowChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextRow = Math.max(0, handleNumber(event, selectedStep.order + 1) - 1);
+    clearPendingInsert();
     updateStep(selectedStep.id, { order: nextRow });
     setSelection({ lanes: [selectedStep.laneId], steps: [selectedStep.id], connections: [] });
   };
@@ -426,9 +441,10 @@ export const StepPanel = () => {
                 onDragEnd={handleStepDragEnd}
                 onDrop={(event) => handleStepDrop(event, index)}
                 onDragOver={handleStepDragOverItem}
-                onClick={() =>
-                  setSelection({ lanes: [step.laneId], steps: [step.id], connections: [] })
-                }
+                onClick={() => {
+                  clearPendingInsert();
+                  setSelection({ lanes: [step.laneId], steps: [step.id], connections: [] });
+                }}
                 className={classNames(
                   'flex items-center justify-between rounded-md border px-3 py-2 text-xs transition',
                   {
@@ -454,6 +470,7 @@ export const StepPanel = () => {
             variant="outline"
             size="sm"
             onClick={() => {
+              clearPendingInsert();
               moveStepUp(selectedStep.id);
               setSelection({ lanes: [selectedStep.laneId], steps: [selectedStep.id], connections: [] });
             }}
@@ -466,6 +483,7 @@ export const StepPanel = () => {
             variant="outline"
             size="sm"
             onClick={() => {
+              clearPendingInsert();
               moveStepDown(selectedStep.id);
               setSelection({ lanes: [selectedStep.laneId], steps: [selectedStep.id], connections: [] });
             }}
@@ -512,6 +530,7 @@ export const StepPanel = () => {
           variant="outline"
           className="w-full bg-red-50 text-red-600 hover:bg-red-100"
           onClick={() => {
+            clearPendingInsert();
             removeStep(selectedStep.id);
             setSelection({ lanes: [], steps: [], connections: [] });
           }}

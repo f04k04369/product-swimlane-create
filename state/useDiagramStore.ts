@@ -43,11 +43,12 @@ interface DiagramStore {
   redoStack: DiagramHistoryEntry[];
   canUndo: boolean;
   canRedo: boolean;
+  pendingInsert: { laneId: ElementID; row: number } | null;
   setDiagram: (diagram: Diagram, options?: { label?: string; preserveLayout?: boolean }) => void;
   addLane: (title?: string) => void;
   updateLane: (id: ElementID, updates: LaneUpdate) => void;
   removeLane: (id: ElementID) => void;
-  addStep: (laneId: ElementID, options?: { title?: string; kind?: StepKind }) => void;
+  addStep: (options?: { title?: string; kind?: StepKind }) => ElementID | null;
   updateStep: (id: ElementID, updates: StepUpdate) => void;
   moveStep: (id: ElementID, x: number, y: number) => void;
   reorderStep: (id: ElementID, targetIndex: number) => void;
@@ -81,6 +82,8 @@ interface DiagramStore {
   removeConnection: (connectionId: ElementID) => void;
   setSelection: (selection: SelectionState) => void;
   clearSelection: () => void;
+  setPendingInsert: (laneId: ElementID, row: number) => void;
+  clearPendingInsert: () => void;
   undo: () => void;
   redo: () => void;
   reset: () => void;
@@ -190,6 +193,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
     redoStack: [],
     canUndo: false,
     canRedo: false,
+    pendingInsert: null,
 
     setDiagram: (diagram, options) => {
       const { label = 'import diagram', preserveLayout = false } = options ?? {};
@@ -270,6 +274,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         canUndo: false,
         canRedo: false,
         selection: { lanes: [], steps: [], connections: [] },
+        pendingInsert: null,
       });
       get().log({ action: label, targetType: 'diagram', targetId: snapshot.id });
     },
@@ -341,6 +346,9 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         targetType: 'lane',
         targetId: id,
       });
+      set((state) =>
+        state.pendingInsert && state.pendingInsert.laneId === id ? { pendingInsert: null } : {}
+      );
     },
 
     reorderLane: (id, newOrder) => {
@@ -367,40 +375,50 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       });
     },
 
-    addStep: (laneId, options) => {
+    addStep: (options) => {
+      const pending = get().pendingInsert;
+      if (!pending) return null;
+      const insertRow = Math.max(0, pending.row);
       const { title = '新しいステップ', kind = 'process' } = options ?? {};
+      let createdId: ElementID | null = null;
       commit((draft) => {
-        const lane = draft.lanes.find((item) => item.id === laneId);
+        const lane = draft.lanes.find((item) => item.id === pending.laneId);
         if (!lane) return;
         const dimensions = KIND_DIMENSIONS[kind];
-        const occupiedRows = new Set(
-          draft.steps.filter((candidate) => candidate.laneId === laneId).map((candidate) => candidate.order)
-        );
-        let order = 0;
-        while (occupiedRows.has(order)) {
-          order += 1;
-        }
-        const step: Step = {
+        draft.steps
+          .filter((candidate) => candidate.laneId === lane.id && candidate.order >= insertRow)
+          .forEach((candidate) => {
+            candidate.order += 1;
+          });
+        const newStep: Step = {
           id: nanoid(),
-          laneId,
+          laneId: lane.id,
           title,
           description: '',
-          order,
-          x: deriveStepX(lane.order, dimensions.width),
-          y: yForRow(order, dimensions.height),
+          order: insertRow,
           width: dimensions.width,
           height: dimensions.height,
           color: KIND_COLORS[kind],
           kind,
+          x: deriveStepX(lane.order, dimensions.width),
+          y: yForRow(insertRow, dimensions.height),
         };
-        draft.steps.push(step);
-        layoutLaneSteps(draft, laneId);
+        draft.steps.push(newStep);
+        layoutLaneSteps(draft, lane.id, draft.steps.filter((step) => step.laneId === lane.id));
         sortSteps(draft);
+        createdId = newStep.id;
       }, 'add step', {
         action: 'add_step',
         targetType: 'step',
-        payload: { laneId, kind },
+        payload: { laneId: pending.laneId, row: pending.row, kind },
       });
+      if (createdId) {
+        set({
+          pendingInsert: { laneId: pending.laneId, row: insertRow + 1 },
+          selection: { lanes: [pending.laneId], steps: [createdId], connections: [] },
+        });
+      }
+      return createdId;
     },
 
     updateStep: (id, updates) => {
@@ -788,6 +806,14 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
 
     clearSelection: () => {
       set({ selection: { lanes: [], steps: [], connections: [] } });
+    },
+
+    setPendingInsert: (laneId, row) => {
+      set({ pendingInsert: { laneId, row: Math.max(0, Math.floor(row)) } });
+    },
+
+    clearPendingInsert: () => {
+      set({ pendingInsert: null });
     },
 
     undo: () => {

@@ -1,5 +1,5 @@
-import { useCallback, useMemo, type MouseEvent, type TouchEvent, type RefObject } from 'react';
-import ReactFlow, { Background, Connection, Controls, Edge, MiniMap, Node } from 'reactflow';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent, type TouchEvent, type RefObject } from 'react';
+import ReactFlow, { Background, Connection, Controls, Edge, MiniMap, Node, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 import { LaneNode } from '@/components/canvas/LaneNode';
@@ -35,6 +35,66 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
   const setSelection = useDiagramStore((state) => state.setSelection);
   const clearSelection = useDiagramStore((state) => state.clearSelection);
   const updateConnectionEndpoints = useDiagramStore((state) => state.updateConnectionEndpoints);
+  const pendingInsert = useDiagramStore((state) => state.pendingInsert);
+  const setPendingInsert = useDiagramStore((state) => state.setPendingInsert);
+  const clearPendingInsert = useDiagramStore((state) => state.clearPendingInsert);
+  const [isSpacePanning, setIsSpacePanning] = useState(false);
+  const { project } = useReactFlow();
+
+  useEffect(() => {
+    let frame: number | null = null;
+
+    const applyCursor = () => {
+      const pane = canvasRef.current?.querySelector<HTMLElement>('.react-flow__pane');
+      if (!pane) {
+        frame = requestAnimationFrame(applyCursor);
+        return;
+      }
+      pane.style.cursor = isSpacePanning ? 'grab' : 'default';
+    };
+
+    applyCursor();
+
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      const pane = canvasRef.current?.querySelector<HTMLElement>('.react-flow__pane');
+      if (pane) pane.style.cursor = '';
+    };
+  }, [canvasRef, isSpacePanning]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' && event.key !== ' ') return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      setIsSpacePanning((prev) => {
+        if (prev) return prev;
+        event.preventDefault();
+        return true;
+      });
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' && event.key !== ' ') return;
+      setIsSpacePanning(false);
+    };
+
+    const handleWindowBlur = () => {
+      setIsSpacePanning(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, []);
 
   const laneMap = useMemo(() => {
     const map = new Map<string, { title: string; color: string; order: number }>();
@@ -43,6 +103,8 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     });
     return map;
   }, [diagram.lanes]);
+
+  const sortedLanes = useMemo(() => diagram.lanes.slice().sort((a, b) => a.order - b.order), [diagram.lanes]);
 
   const laneHeights = useMemo(() => {
     const map = new Map<string, number>();
@@ -57,21 +119,43 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
 
   const laneNodes: Node[] = useMemo(
     () =>
-      diagram.lanes.map((lane) => ({
+      sortedLanes.map((lane) => ({
         id: `lane-${lane.id}`,
         type: 'lane',
         position: { x: deriveLanePositionX(lane.order), y: 0 },
         data: {
+          id: lane.id,
           title: lane.title,
           color: lane.color,
           height: laneHeights.get(lane.id) ?? minimumHeight,
           width: LANE_WIDTH,
+          pendingRow: pendingInsert?.laneId === lane.id ? pendingInsert.row : null,
+          rowHeight: ROW_HEIGHT,
+          lanePadding: LANE_PADDING,
         },
         selectable: false,
         draggable: false,
         zIndex: 0,
       })),
-    [diagram.lanes, laneHeights, minimumHeight]
+    [laneHeights, minimumHeight, pendingInsert, sortedLanes]
+  );
+
+  const projectPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!canvasRef.current) return null;
+      const bounds = canvasRef.current.getBoundingClientRect();
+      return project({ x: clientX - bounds.left, y: clientY - bounds.top });
+    },
+    [canvasRef, project]
+  );
+
+  const selectLaneRow = useCallback(
+    (laneId: string, diagramY: number) => {
+      const row = Math.max(0, Math.floor((diagramY - LANE_PADDING) / ROW_HEIGHT));
+      setPendingInsert(laneId, row);
+      setSelection({ lanes: [laneId], steps: [], connections: [] });
+    },
+    [setPendingInsert, setSelection]
   );
 
   const stepNodes: Node[] = useMemo(
@@ -144,9 +228,10 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       moveStep(node.id, node.position.x, node.position.y);
       const { diagram: latestDiagram } = useDiagramStore.getState();
       const moved = latestDiagram.steps.find((step) => step.id === node.id);
+      clearPendingInsert();
       setSelection({ lanes: moved ? [moved.laneId] : [], steps: [node.id], connections: [] });
     },
-    [moveStep, setSelection]
+    [clearPendingInsert, moveStep, setSelection]
   );
 
   const handleConnect = useCallback(
@@ -161,6 +246,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
           (edge.targetHandle ?? null) === (connection.targetHandle ?? null)
       );
       if (existing) {
+        clearPendingInsert();
         setSelection({ lanes: [], steps: [], connections: [existing.id] });
         return;
       }
@@ -174,10 +260,11 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
           (edge.targetHandle ?? null) === (connection.targetHandle ?? null)
       );
       if (created) {
+        clearPendingInsert();
         setSelection({ lanes: [], steps: [], connections: [created.id] });
       }
     },
-    [addConnection, setSelection]
+    [addConnection, clearPendingInsert, setSelection]
   );
 
   const handleEdgesDelete = useCallback(
@@ -186,16 +273,18 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         removeConnection(edge.id);
       });
       clearSelection();
+      clearPendingInsert();
     },
-    [clearSelection, removeConnection]
+    [clearPendingInsert, clearSelection, removeConnection]
   );
 
   const handleEdgeClick = useCallback(
     (event: MouseEvent, edge: Edge<KeyEdgeData>) => {
       event.stopPropagation();
+      clearPendingInsert();
       setSelection({ lanes: [], steps: [], connections: [edge.id] });
     },
-    [setSelection]
+    [clearPendingInsert, setSelection]
   );
 
   const handleEdgeUpdate = useCallback(
@@ -207,16 +296,18 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         sourceHandle: newConnection.sourceHandle ?? null,
         targetHandle: newConnection.targetHandle ?? null,
       });
+      clearPendingInsert();
       setSelection({ lanes: [], steps: [], connections: [oldEdge.id] });
     },
-    [setSelection, updateConnectionEndpoints]
+    [clearPendingInsert, setSelection, updateConnectionEndpoints]
   );
 
   const handleEdgeUpdateStart = useCallback(
     (_event: MouseEvent | TouchEvent, edge: Edge<KeyEdgeData>) => {
+      clearPendingInsert();
       setSelection({ lanes: [], steps: [], connections: [edge.id] });
     },
-    [setSelection]
+    [clearPendingInsert, setSelection]
   );
 
   const handleEdgeUpdateEnd = useCallback(() => {
@@ -227,6 +318,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: Node[]; edges: Edge<KeyEdgeData>[] }) => {
       const manualEdge = selectedEdges.at(0);
       if (manualEdge) {
+        clearPendingInsert();
         setSelection({ lanes: [], steps: [], connections: [manualEdge.id] });
         return;
       }
@@ -236,34 +328,76 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         setSelection({ lanes: laneId ? [laneId] : [], steps: [stepNode.id], connections: [] });
         return;
       }
+      const { pendingInsert: currentPending } = useDiagramStore.getState();
+      if (currentPending) {
+        setSelection({ lanes: [currentPending.laneId], steps: [], connections: [] });
+        return;
+      }
       clearSelection();
+      clearPendingInsert();
     },
-    [clearSelection, setSelection]
+    [clearPendingInsert, clearSelection, setSelection]
   );
 
-  const handlePaneClick = useCallback(() => {
-    clearSelection();
-  }, [clearSelection]);
+  const handlePaneClick = useCallback(
+    (event: MouseEvent) => {
+      if (isSpacePanning) return;
+      const projected = projectPointer(event.clientX, event.clientY);
+      if (!projected) {
+        clearSelection();
+        clearPendingInsert();
+        return;
+      }
+      const lane = sortedLanes.find((candidate) => {
+        const xStart = deriveLanePositionX(candidate.order);
+        const xEnd = xStart + LANE_WIDTH;
+        return projected.x >= xStart && projected.x <= xEnd;
+      });
+      if (lane) {
+        selectLaneRow(lane.id, projected.y);
+      } else {
+        clearSelection();
+        clearPendingInsert();
+      }
+    },
+    [clearPendingInsert, clearSelection, isSpacePanning, projectPointer, selectLaneRow, sortedLanes]
+  );
 
   const handleNodeClick = useCallback(
-    (_: unknown, node: Node) => {
+    (event: MouseEvent, node: Node) => {
+      if (isSpacePanning) return;
+      event.stopPropagation();
+      if (node.type === 'lane') {
+        const laneId = (node.data as { id?: string })?.id;
+        if (!laneId) return;
+        const projected = projectPointer(event.clientX, event.clientY);
+        if (!projected) return;
+        selectLaneRow(laneId, projected.y);
+        return;
+      }
       if (node.type !== 'step') return;
       const laneId = (node.data as { laneId?: string } | undefined)?.laneId;
+      clearPendingInsert();
       setSelection({ lanes: laneId ? [laneId] : [], steps: [node.id], connections: [] });
     },
-    [setSelection]
+    [clearPendingInsert, isSpacePanning, projectPointer, selectLaneRow, setSelection]
   );
 
   return (
-    <div ref={canvasRef} className="relative flex-1 bg-slate-50" style={{ minHeight: canvasHeight }}>
+    <div
+      ref={canvasRef}
+      className="relative flex-1 bg-slate-50"
+      style={{ minHeight: canvasHeight, cursor: isSpacePanning ? 'grab' : 'default' }}
+    >
       <ReactFlow
-        className="h-full w-full"
+        className={`h-full w-full ${isSpacePanning ? 'cursor-grab' : 'cursor-default'}`}
         style={{ minHeight: canvasHeight }}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={edgeOptions}
+        panOnDrag={isSpacePanning}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         minZoom={0.3}

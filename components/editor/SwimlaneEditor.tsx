@@ -13,6 +13,7 @@ import type { StepKind } from '@/lib/diagram/types';
 export const SwimlaneEditor = () => {
   const addLane = useDiagramStore((state) => state.addLane);
   const addStep = useDiagramStore((state) => state.addStep);
+  const removeStep = useDiagramStore((state) => state.removeStep);
   const undo = useDiagramStore((state) => state.undo);
   const redo = useDiagramStore((state) => state.redo);
   const reset = useDiagramStore((state) => state.reset);
@@ -21,6 +22,7 @@ export const SwimlaneEditor = () => {
   const canUndo = useDiagramStore((state) => state.canUndo);
   const canRedo = useDiagramStore((state) => state.canRedo);
   const setSelection = useDiagramStore((state) => state.setSelection);
+  const pendingInsert = useDiagramStore((state) => state.pendingInsert);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [mermaidOpen, setMermaidOpen] = useState(false);
@@ -35,18 +37,34 @@ export const SwimlaneEditor = () => {
     return () => clearTimeout(timer);
   }, [status]);
 
-  const targetLaneId = selection.lanes[0] ?? diagram.lanes[0]?.id ?? null;
-
   const handleAddStep = (kind: StepKind = 'process') => {
-    if (!targetLaneId) return;
-    addStep(targetLaneId, { kind });
-    const { diagram: latest } = useDiagramStore.getState();
-    const latestSteps = latest.steps
-      .filter((step) => step.laneId === targetLaneId)
-      .sort((a, b) => a.order - b.order);
-    const newest = latestSteps.at(-1);
-    setSelection({ lanes: [targetLaneId], steps: newest ? [newest.id] : [], connections: [] });
+    if (!pendingInsert) {
+      setStatus({ type: 'error', text: 'ステップを追加する行をクリックしてください' });
+      return;
+    }
+    const createdId = addStep({ kind });
+    if (!createdId) {
+      setStatus({ type: 'error', text: 'ステップを追加できませんでした。行を選択しているか確認してください。' });
+    } else {
+      setStatus({ type: 'info', text: 'ステップを追加しました' });
+    }
   };
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      const active = document.activeElement as HTMLElement | null;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+        return;
+      }
+      const stepId = selection.steps[0];
+      if (!stepId) return;
+      event.preventDefault();
+      removeStep(stepId);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selection.steps, removeStep]);
 
   const handleExportPng = async () => {
     if (!canvasRef.current) return;
@@ -89,7 +107,7 @@ export const SwimlaneEditor = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => handleAddStep('process')}
-                disabled={!targetLaneId}
+                disabled={!pendingInsert}
               >
                 標準ステップ
               </Button>
@@ -98,7 +116,7 @@ export const SwimlaneEditor = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => handleAddStep('decision')}
-                disabled={!targetLaneId}
+                disabled={!pendingInsert}
               >
                 条件分岐
               </Button>
@@ -107,7 +125,7 @@ export const SwimlaneEditor = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => handleAddStep('start')}
-                disabled={!targetLaneId}
+                disabled={!pendingInsert}
               >
                 開始
               </Button>
@@ -116,7 +134,7 @@ export const SwimlaneEditor = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => handleAddStep('end')}
-                disabled={!targetLaneId}
+                disabled={!pendingInsert}
               >
                 終了
               </Button>
@@ -125,7 +143,7 @@ export const SwimlaneEditor = () => {
                 variant="outline"
                 size="sm"
                 onClick={() => handleAddStep('file')}
-                disabled={!targetLaneId}
+                disabled={!pendingInsert}
               >
                 ファイル処理
               </Button>

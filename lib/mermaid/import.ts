@@ -61,7 +61,6 @@ export const importMermaidToDiagram = (content: string): Diagram => {
     const sanitizedSteps = persistedState.steps
       .map((step: Step, index: number) => sanitizeStep(step, sanitizedLanes, index))
       .filter((step) => laneMap.has(step.laneId));
-    const stepMap = new Map(sanitizedSteps.map((step) => [step.id, step] as const));
     const sanitizedConnections = persistedState.connections
       .map((connection: Connection) => sanitizeConnection(connection, sanitizedSteps))
       .filter((connection): connection is Connection => Boolean(connection));
@@ -84,7 +83,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
   let laneOrder = 0;
 
   while ((laneMatch = laneRegex.exec(cleaned)) !== null) {
-    const [, laneAlias, laneTitleRaw, laneBody] = laneMatch;
+    const [, , laneTitleRaw, laneBody] = laneMatch;
     const laneMetaMatch = laneBody.match(/%%\s*lane-meta:(.+)/);
     const laneMeta = parseJsonMeta('lane-meta', laneMetaMatch?.[1]) ?? {};
 
