@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  font-feature-settings: 'palt';
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background-color: rgba(37, 99, 235, 0.2);
+}
+
+.react-flow__edges {
+  z-index: 6 !important;
+  pointer-events: auto;
+}
+
+.react-flow__edges path,
+.react-flow__edge-path,
+.react-flow__connection-path {
+  pointer-events: stroke;
+}
+
+.react-flow__edge-updater,
+.react-flow__edge-updater.animated,
+.react-flow__edge-updater.activated {
+  pointer-events: all;
+  z-index: 7;
+}
+
+.react-flow__nodes {
+  z-index: 4 !important;
+}
+
+.react-flow__node-lane {
+  pointer-events: none !important;
+}
