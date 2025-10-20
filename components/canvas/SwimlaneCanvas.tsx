@@ -42,23 +42,14 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
   const { project } = useReactFlow();
 
   useEffect(() => {
-    let frame: number | null = null;
-
-    const applyCursor = () => {
-      const pane = canvasRef.current?.querySelector<HTMLElement>('.react-flow__pane');
-      if (!pane) {
-        frame = requestAnimationFrame(applyCursor);
-        return;
-      }
-      pane.style.cursor = isSpacePanning ? 'grab' : 'default';
-    };
-
-    applyCursor();
-
+    const container = canvasRef.current;
+    if (!container) return;
+    const pane = container.querySelector<HTMLElement>('.react-flow__pane');
+    if (!pane) return;
+    const previousCursor = pane.style.cursor;
+    pane.style.cursor = isSpacePanning ? 'grab' : 'default';
     return () => {
-      if (frame !== null) cancelAnimationFrame(frame);
-      const pane = canvasRef.current?.querySelector<HTMLElement>('.react-flow__pane');
-      if (pane) pane.style.cursor = '';
+      pane.style.cursor = previousCursor;
     };
   }, [canvasRef, isSpacePanning]);
 

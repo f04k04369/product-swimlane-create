@@ -153,7 +153,7 @@ export const StepPanel = () => {
                 <Button
                   key={option.label}
                   type="button"
-                  variant={currentLabel === option.value ? 'default' : 'outline'}
+                  variant={currentLabel === option.value ? 'primary' : 'outline'}
                   size="sm"
                   onClick={() => handleLabelChange(option.value)}
                 >
