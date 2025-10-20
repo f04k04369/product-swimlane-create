@@ -290,8 +290,12 @@ export const StepPanel = () => {
     );
   }
 
-  const currentIndex = laneStepsOrdered.findIndex((step) => step.id === selectedStep?.id);
-  const canMoveUp = selectedStep ? selectedStep.order > 0 : false;
+  if (!selectedStep) {
+    return null;
+  }
+
+  const currentIndex = laneStepsOrdered.findIndex((step) => step.id === selectedStep.id);
+  const canMoveUp = selectedStep.order > 0;
   const canMoveDown = currentIndex !== -1;
 
   const handleStepDragStart = (event: DragEvent<HTMLLIElement>, stepId: string) => {
@@ -346,19 +350,20 @@ export const StepPanel = () => {
   const handleLaneChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const nextLaneId = event.target.value;
     const laneIndex = lanes.findIndex((lane) => lane.id === nextLaneId);
-    if (laneIndex !== -1) {
-      clearPendingInsert();
-      updateStep(selectedStep.id, { laneId: nextLaneId });
-      setSelection({ lanes: [nextLaneId], steps: [selectedStep.id], connections: [] });
-    }
+    if (laneIndex === -1 || !selectedStep) return;
+    clearPendingInsert();
+    updateStep(selectedStep.id, { laneId: nextLaneId });
+    setSelection({ lanes: [nextLaneId], steps: [selectedStep.id], connections: [] });
   };
 
   const handleKindChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    if (!selectedStep) return;
     clearPendingInsert();
     changeStepKind(selectedStep.id, event.target.value as StepKind);
   };
 
   const handleRowChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (!selectedStep) return;
     const nextRow = Math.max(0, handleNumber(event, selectedStep.order + 1) - 1);
     clearPendingInsert();
     updateStep(selectedStep.id, { order: nextRow });
