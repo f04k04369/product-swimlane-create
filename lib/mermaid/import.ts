@@ -62,7 +62,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       .map((step, index) => sanitizeStep(step, sanitizedLanes, index))
       .filter((step): step is Step => laneMap.has(step.laneId));
     const sanitizedConnections = ((persistedState.connections ?? []) as Connection[])
-      .map((connection, index) => sanitizeConnection(connection, sanitizedSteps))
+      .map((connection) => sanitizeConnection(connection, sanitizedSteps))
       .filter((connection): connection is Connection => Boolean(connection));
 
     const now = new Date().toISOString();
