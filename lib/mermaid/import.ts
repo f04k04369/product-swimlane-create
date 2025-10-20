@@ -53,10 +53,10 @@ export const importMermaidToDiagram = (content: string): Diagram => {
     Array.isArray(persistedState.steps) &&
     Array.isArray(persistedState.connections)
   ) {
-    const sanitizedLanes = persistedState.lanes
-      .map((lane: Lane, index: number) => sanitizeLane(lane, index))
+    const sanitizedLanes = (persistedState.lanes as Lane[])
+      .map((lane, index): Lane => sanitizeLane(lane, index))
       .sort((a, b) => a.order - b.order)
-      .map((lane, index) => ({ ...lane, order: index }));
+      .map((lane, index): Lane => ({ ...lane, order: index }));
     const laneMap = new Map(sanitizedLanes.map((lane) => [lane.id, lane] as const));
     const sanitizedSteps = persistedState.steps
       .map((step: Step, index: number) => sanitizeStep(step, sanitizedLanes, index))
