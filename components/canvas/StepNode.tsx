@@ -50,14 +50,12 @@ export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
           'rounded-full border border-rose-200 bg-rose-50 text-rose-700 font-semibold'
         );
       case 'file':
-        contentStyle.backgroundColor = '#fef9c3';
+        contentStyle.backgroundColor = '#fffbea';
         contentStyle.border = '1px solid #facc15';
-        contentStyle.borderTopLeftRadius = 12;
-        contentStyle.borderTopRightRadius = 12;
-        contentStyle.borderBottomLeftRadius = 12;
-        contentStyle.borderBottomRightRadius = 12;
+        contentStyle.borderRadius = 14;
         contentStyle.position = 'relative';
-        return classNames(baseContentClass, stateClass, 'relative overflow-hidden text-amber-900');
+        contentStyle.zIndex = 1;
+        return classNames(baseContentClass, stateClass, 'relative overflow-hidden text-slate-900');
       default:
         contentStyle.borderLeftWidth = 6;
         contentStyle.borderLeftColor = laneColor;
@@ -104,16 +102,9 @@ export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
           >
-            <path
-              d="M0 0 H100 V68 C75 94 25 94 0 68 Z"
-              fill="#fef3bf"
-            />
-            <path
-              d="M0 0 H100 V68 C75 94 25 94 0 68 Z"
-              stroke="#facc15"
-              strokeWidth="1.5"
-              fill="none"
-            />
+            <rect x="0" y="0" width="100" height="100" fill="#fffbea" stroke="#facc15" strokeWidth="1.2" rx="12" />
+            <rect x="0" y="0" width="12" height="100" fill="#fde68a" />
+            <rect x="88" y="0" width="12" height="100" fill="#fde68a" />
           </svg>
         )}
       </div>
