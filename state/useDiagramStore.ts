@@ -390,11 +390,16 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         const lane = draft.lanes.find((item) => item.id === pending.laneId);
         if (!lane) return;
         const dimensions = KIND_DIMENSIONS[kind];
-        draft.steps
-          .filter((candidate) => candidate.laneId === lane.id && candidate.order >= insertRow)
-          .forEach((candidate) => {
-            candidate.order += 1;
-          });
+        const hasStepAtRow = draft.steps.some(
+          (candidate) => candidate.laneId === lane.id && candidate.order === insertRow
+        );
+        if (hasStepAtRow) {
+          draft.steps
+            .filter((candidate) => candidate.laneId === lane.id && candidate.order >= insertRow)
+            .forEach((candidate) => {
+              candidate.order += 1;
+            });
+        }
         const newStep: Step = {
           id: nanoid(),
           laneId: lane.id,
@@ -409,7 +414,14 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           y: yForRow(insertRow, dimensions.height),
         };
         draft.steps.push(newStep);
-        layoutLaneSteps(draft, lane.id, draft.steps.filter((step) => step.laneId === lane.id));
+
+        draft.steps
+          .filter((step) => step.laneId === lane.id)
+          .forEach((step) => {
+            step.x = deriveStepX(lane.order, step.width);
+            step.y = yForRow(step.order, step.height);
+          });
+
         sortSteps(draft);
         createdId = newStep.id;
       }, 'add step', {

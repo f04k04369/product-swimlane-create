@@ -131,7 +131,7 @@ export const KeyEdge = memo(
         const labelX = (sourceX + targetX) / 2;
         const labelY = (sourceY + targetY) / 2;
         const controlPoint = controlData ?? { x: labelX, y: labelY };
-        return { path, labelX, labelY, controlPoint };
+        return { path, labelX, labelY, controlPoint, points };
       }
 
       const midIndex = Math.floor(points.length / 2);
