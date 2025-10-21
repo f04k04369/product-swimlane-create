@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     title: 'Swimlane Studio',
     description:
       '業務フローやシステム開発に必要なフロー図作成をスイムレーン形式で作成する専用アプリ',
-    images: ['/og-image.png'],
+    images: ['/ogp.jpeg'],
   },
   icons: {
     icon: [
