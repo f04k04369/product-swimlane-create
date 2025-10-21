@@ -2,6 +2,7 @@ import { ChangeEvent, DragEvent, useMemo, useState } from 'react';
 import classNames from 'classnames';
 import { useDiagramStore } from '@/state/useDiagramStore';
 import { Button } from '@/components/ui/button';
+import { RowShiftPanel } from '@/components/panels/RowShiftPanel';
 import type { StepKind } from '@/lib/diagram/types';
 
 const inputStyles =
@@ -31,6 +32,7 @@ export const StepPanel = () => {
   const reverseConnection = useDiagramStore((state) => state.reverseConnection);
   const removeConnection = useDiagramStore((state) => state.removeConnection);
   const clearPendingInsert = useDiagramStore((state) => state.clearPendingInsert);
+  const pendingInsert = useDiagramStore((state) => state.pendingInsert);
 
   const selectedStepId = selection.steps[0] ?? null;
   const selectedConnectionId = selection.connections[0] ?? null;
@@ -69,11 +71,14 @@ export const StepPanel = () => {
   }, [selectedStep, steps]);
 
   if (!selectedStep && !selectedConnection) {
+    if (pendingInsert) {
+      return <RowShiftPanel />;
+    }
     return (
       <aside className="w-80 border-l border-border bg-white px-4 py-6">
         <h2 className="text-sm font-semibold text-slate-700">詳細</h2>
         <p className="mt-4 text-sm text-slate-500">
-          ステップまたは矢印を選択すると、ここで編集できます。
+          ステップ・矢印・行ハンドルを選択すると、ここで編集できます。
         </p>
       </aside>
     );
