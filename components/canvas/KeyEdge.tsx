@@ -141,15 +141,48 @@ export const KeyEdge = memo(
       const labelY = (prev.y + next.y) / 2;
       const controlPoint = controlData ?? computePolylineMidpoint(points);
 
-      return { path, labelX, labelY, controlPoint };
+      return { path, labelX, labelY, controlPoint, points };
     };
 
-    const { path: edgePath, labelX, labelY, controlPoint } = buildPath();
+    const { path: edgePath, labelX, labelY, controlPoint, points } = buildPath();
+
+    const computeAngleDeg = (from: { x: number; y: number }, to: { x: number; y: number }) =>
+      (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
+
+    const angleFromPosition = (position?: Position) => {
+      switch (position) {
+        case Position.Left:
+          return 180;
+        case Position.Right:
+          return 0;
+        case Position.Top:
+          return -90;
+        case Position.Bottom:
+          return 90;
+        default:
+          return null;
+      }
+    };
+
+    const computeSegmentAngle = (start: { x: number; y: number }, end: { x: number; y: number }) => {
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) {
+        return null;
+      }
+      return computeAngleDeg(start, end);
+    };
+
+    const rawStartAngle = points.length >= 2 ? computeSegmentAngle(points[0], points[1]) : null;
+    const rawEndAngle = points.length >= 2 ? computeSegmentAngle(points[points.length - 2], points[points.length - 1]) : null;
+
+    const startAngle = rawStartAngle ?? angleFromPosition(sourcePosition) ?? 0;
+    const endAngle = rawEndAngle ?? angleFromPosition(targetPosition) ?? 0;
 
     const hasLabel = Boolean(data?.label);
 
     const markerDefinitions = useMemo(() => {
-      const buildMarker = (kind: MarkerKind, direction: 'start' | 'end') => {
+      const buildMarker = (kind: MarkerKind, direction: 'start' | 'end', angle: number) => {
         if (kind === 'none') return null;
         const size = markerSize;
         const half = size / 2;
@@ -165,7 +198,7 @@ export const KeyEdge = memo(
                 markerHeight={size}
                 refX={half}
                 refY={half}
-                orient="auto"
+                orient={angle}
                 markerUnits="userSpaceOnUse"
               >
                 <circle cx={half} cy={half} r={half} fill={strokeColor} />
@@ -182,7 +215,7 @@ export const KeyEdge = memo(
             markerHeight={size}
             refX={direction === 'end' ? size : 0}
             refY={half}
-            orient={direction === 'end' ? 'auto' : 'auto-start-reverse'}
+            orient={angle}
             markerUnits="userSpaceOnUse"
           >
             <path d={`M0 0 L${size} ${half} L0 ${size} Z`} fill={strokeColor} />
@@ -193,10 +226,10 @@ export const KeyEdge = memo(
       };
 
       return {
-        start: buildMarker(startMarkerKind, 'start'),
-        end: buildMarker(endMarkerKind, 'end'),
+        start: buildMarker(startMarkerKind, 'start', startAngle + 180),
+        end: buildMarker(endMarkerKind, 'end', endAngle),
       };
-    }, [endMarkerKind, id, markerSize, startMarkerKind, strokeColor]);
+    }, [endAngle, endMarkerKind, id, markerSize, sourcePosition, startAngle, startMarkerKind, strokeColor, targetPosition]);
 
     const snapValue = (value: number, candidates: number[]) => {
       for (const candidate of candidates) {
