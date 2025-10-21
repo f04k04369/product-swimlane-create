@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     type: 'website',
     images: [
       {
-        url: '/ogp.png',
+        url: '/ogp.jpeg',
         width: 1200,
         height: 630,
         alt: 'Swimlane Studio でスイムレーン図を作成',
