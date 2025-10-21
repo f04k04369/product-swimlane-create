@@ -6,8 +6,40 @@ const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'Swimlane Studio',
-  description: 'Drag-and-drop swimlane diagram builder with Mermaid export.',
-};
+  description: '業務フローやシステム開発に必要なフロー図作成をスイムレーン形式で作成する専用アプリ',
+  metadataBase: new URL('https://swimlane.studio'),
+  openGraph: {
+    title: 'Swimlane Studio',
+    description:
+      '業務フローやシステム開発に必要なフロー図作成をスイムレーン形式で作成する専用アプリ',
+    url: 'https://swimlane.studio',
+    siteName: 'Swimlane Studio',
+    locale: 'ja_JP',
+    type: 'website',
+    images: [
+      {
+        url: '/ogp.png',
+        width: 1200,
+        height: 630,
+        alt: 'Swimlane Studio でスイムレーン図を作成',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Swimlane Studio',
+    description:
+      '業務フローやシステム開発に必要なフロー図作成をスイムレーン形式で作成する専用アプリ',
+    images: ['/og-image.png'],
+  },
+  icons: {
+    icon: [
+      { url: '/favicon.png' },
+      { url: '/favicon.png', type: 'image/png', sizes: '32x32' },
+      { url: '/favicon.png', type: 'image/png', sizes: '16x16' },
+    ],
+  },
+}; 
 
 export default function RootLayout({
   children,

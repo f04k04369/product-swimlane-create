@@ -123,12 +123,13 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
           pendingRow: pendingInsert?.laneId === lane.id ? pendingInsert.row : null,
           rowHeight: ROW_HEIGHT,
           lanePadding: LANE_PADDING,
+          onSelectRow: handleLaneRowSelect,
         },
         selectable: false,
         draggable: false,
         zIndex: 0,
       })),
-    [laneHeights, minimumHeight, pendingInsert, sortedLanes]
+    [handleLaneRowSelect, laneHeights, minimumHeight, pendingInsert, sortedLanes]
   );
 
   const projectPointer = useCallback(

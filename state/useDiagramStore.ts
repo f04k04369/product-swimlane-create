@@ -795,17 +795,18 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       const lanes = selection.lanes ?? [];
       const steps = selection.steps ?? [];
       const connections = selection.connections ?? [];
-      set({
+      set((state) => ({
         selection: {
           lanes: [...lanes],
           steps: [...steps],
           connections: [...connections],
         },
-      });
+        pendingInsert: steps.length === 0 && connections.length === 0 ? state.pendingInsert : null,
+      }));
     },
 
     clearSelection: () => {
-      set({ selection: { lanes: [], steps: [], connections: [] } });
+      set({ selection: { lanes: [], steps: [], connections: [] }, pendingInsert: null });
     },
 
     setPendingInsert: (laneId, row) => {
