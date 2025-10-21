@@ -66,6 +66,31 @@ export const SwimlaneEditor = () => {
     return () => window.removeEventListener('keydown', handler);
   }, [selection.steps, removeStep]);
 
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const isModifier = event.ctrlKey || event.metaKey;
+      if (!isModifier) return;
+      if (event.key.toLowerCase() === 'z') {
+        if (event.shiftKey) {
+          if (!canRedo) return;
+          event.preventDefault();
+          redo();
+        } else {
+          if (!canUndo) return;
+          event.preventDefault();
+          undo();
+        }
+      }
+      if (!event.shiftKey && event.key.toLowerCase() === 'y') {
+        if (!canRedo) return;
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [canRedo, canUndo, redo, undo]);
+
   const handleExportPng = async () => {
     if (!canvasRef.current) return;
     try {

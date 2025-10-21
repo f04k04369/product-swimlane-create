@@ -9,6 +9,7 @@ interface LaneNodeData {
   pendingRow: number | null;
   rowHeight: number;
   lanePadding: number;
+  onRowHandleClick?: (laneId: string, row: number) => void;
 }
 
 const hexToRgb = (hex: string | undefined) => {
@@ -57,12 +58,15 @@ const getContrastingTextColor = ({ r, g, b }: { r: number; g: number; b: number 
 };
 
 export const LaneNode = ({ data }: NodeProps<LaneNodeData>) => {
-  const { id, title, color, height, width, pendingRow, rowHeight, lanePadding } = data;
+  const { id, title, color, height, width, pendingRow, rowHeight, lanePadding, onRowHandleClick } = data;
   const baseColor = hexToRgb(color);
   const headerBackground = mixRgb(baseColor, { r: 255, g: 255, b: 255 }, 0.72);
   const borderTint = mixRgb(baseColor, { r: 15, g: 23, b: 42 }, 0.15);
   const headerTextColor = getContrastingTextColor(headerBackground);
   const highlightTop = pendingRow !== null ? lanePadding + pendingRow * rowHeight : null;
+  const rowAreaHeight = Math.max(0, height - lanePadding * 2);
+  const rowCount = Math.max(1, Math.round(rowAreaHeight / rowHeight));
+  const handleThickness = 6;
 
   return (
     <div
@@ -81,6 +85,22 @@ export const LaneNode = ({ data }: NodeProps<LaneNodeData>) => {
           style={{ top: highlightTop, height: rowHeight }}
         />
       )}
+      {Array.from({ length: rowCount }, (_, index) => {
+        const top = lanePadding + index * rowHeight - handleThickness / 2;
+        return (
+          <button
+            key={`${id}-handle-${index}`}
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onRowHandleClick?.(id, index);
+            }}
+            className="absolute left-4 right-4 z-10 rounded-full border border-dotted border-slate-300/50 bg-white/30 transition hover:bg-slate-200/60"
+            style={{ top: Math.max(top, lanePadding - handleThickness / 2), height: handleThickness }}
+            aria-label={`${title} の行 ${index + 1} を操作`}
+          />
+        );
+      })}
       <div
         className="px-4 py-3"
         style={{

@@ -35,7 +35,8 @@ describe('useDiagramStore', () => {
   it('adds a step within selected lane', () => {
     const store = useDiagramStore.getState();
     const targetLane = store.diagram.lanes[0];
-    store.addStep(targetLane.id, { title: 'ステップA', kind: 'process' });
+    store.setPendingInsert(targetLane.id, 0);
+    store.addStep({ title: 'ステップA', kind: 'process' });
     const { diagram } = useDiagramStore.getState();
 
     const stepsInLane = diagram.steps.filter((step) => step.laneId === targetLane.id);
@@ -55,7 +56,8 @@ describe('useDiagramStore', () => {
   it('changes step kind and reorders rows', () => {
     const store = useDiagramStore.getState();
     const laneId = store.diagram.lanes[0].id;
-    store.addStep(laneId, { title: 'B', kind: 'process' });
+    store.setPendingInsert(laneId, 0);
+    store.addStep({ title: 'B', kind: 'process' });
     const { diagram } = useDiagramStore.getState();
     const stepId = diagram.steps.find((step) => step.title === 'B')?.id;
     expect(stepId).toBeDefined();

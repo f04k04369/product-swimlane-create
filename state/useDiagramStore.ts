@@ -80,6 +80,11 @@ interface DiagramStore {
   ) => void;
   reverseConnection: (connectionId: ElementID) => void;
   removeConnection: (connectionId: ElementID) => void;
+  shiftRows: (
+    row: number,
+    amount: number,
+    options: { scope: 'lane' | 'all'; laneId?: ElementID; direction?: 'down' | 'up' }
+  ) => void;
   setSelection: (selection: SelectionState) => void;
   clearSelection: () => void;
   setPendingInsert: (laneId: ElementID, row: number) => void;
@@ -385,11 +390,16 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         const lane = draft.lanes.find((item) => item.id === pending.laneId);
         if (!lane) return;
         const dimensions = KIND_DIMENSIONS[kind];
-        draft.steps
-          .filter((candidate) => candidate.laneId === lane.id && candidate.order >= insertRow)
-          .forEach((candidate) => {
-            candidate.order += 1;
-          });
+        const hasStepAtRow = draft.steps.some(
+          (candidate) => candidate.laneId === lane.id && candidate.order === insertRow
+        );
+        if (hasStepAtRow) {
+          draft.steps
+            .filter((candidate) => candidate.laneId === lane.id && candidate.order >= insertRow)
+            .forEach((candidate) => {
+              candidate.order += 1;
+            });
+        }
         const newStep: Step = {
           id: nanoid(),
           laneId: lane.id,
@@ -404,7 +414,14 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           y: yForRow(insertRow, dimensions.height),
         };
         draft.steps.push(newStep);
-        layoutLaneSteps(draft, lane.id, draft.steps.filter((step) => step.laneId === lane.id));
+
+        draft.steps
+          .filter((step) => step.laneId === lane.id)
+          .forEach((step) => {
+            step.x = deriveStepX(lane.order, step.width);
+            step.y = yForRow(step.order, step.height);
+          });
+
         sortSteps(draft);
         createdId = newStep.id;
       }, 'add step', {
@@ -791,21 +808,88 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       });
     },
 
+    shiftRows: (row, amount, options) => {
+      const normalized = Math.max(0, Math.floor(amount));
+      if (normalized <= 0) return;
+      const { scope, laneId, direction = 'down' } = options;
+      const laneIds = scope === 'all'
+        ? get().diagram.lanes.map((lane) => lane.id)
+        : laneId
+        ? [laneId]
+        : [];
+      if (!laneIds.length) return;
+
+      commit((draft) => {
+        laneIds.forEach((targetLaneId) => {
+          const lane = draft.lanes.find((candidate) => candidate.id === targetLaneId);
+          if (!lane) return;
+          const laneSteps = draft.steps
+            .filter((step) => step.laneId === targetLaneId)
+            .sort((a, b) => a.order - b.order);
+
+          if (direction === 'down') {
+            laneSteps
+              .filter((step) => step.order >= row)
+              .forEach((step) => {
+                step.order += normalized;
+              });
+          } else {
+            const movingSteps = laneSteps.filter((step) => step.order >= row);
+            const staticSteps = laneSteps.filter((step) => step.order < row);
+            const staticOrders = new Set(staticSteps.map((step) => step.order));
+            const conflict = movingSteps.some((step) => {
+              const candidate = Math.max(0, step.order - normalized);
+              return staticOrders.has(candidate);
+            });
+            if (conflict) {
+              return;
+            }
+            movingSteps.forEach((step) => {
+              step.order = Math.max(0, step.order - normalized);
+            });
+          }
+
+          laneSteps.forEach((step) => {
+            step.x = deriveStepX(lane.order, step.width);
+            step.y = yForRow(step.order, step.height);
+          });
+        });
+        sortSteps(draft);
+      }, direction === 'down' ? 'shift rows down' : 'shift rows up', {
+        action: direction === 'down' ? 'shift_rows_down' : 'shift_rows_up',
+        targetType: 'diagram',
+        payload: { row, amount: normalized, scope, laneIds, direction },
+      });
+
+      const laneSet = new Set(laneIds);
+      set((state) => {
+        const current = state.pendingInsert;
+        if (!current || !laneSet.has(current.laneId)) {
+          return {};
+        }
+        const nextRow = direction === 'down'
+          ? current.row + normalized
+          : Math.max(0, current.row - normalized);
+        return { pendingInsert: { laneId: current.laneId, row: nextRow } };
+      });
+    },
+
     setSelection: (selection) => {
       const lanes = selection.lanes ?? [];
       const steps = selection.steps ?? [];
       const connections = selection.connections ?? [];
-      set({
+      set((state) => ({
         selection: {
           lanes: [...lanes],
           steps: [...steps],
           connections: [...connections],
         },
-      });
+        pendingInsert: steps.length === 0 && connections.length === 0 ? state.pendingInsert : null,
+      }));
     },
 
     clearSelection: () => {
-      set({ selection: { lanes: [], steps: [], connections: [] } });
+      set({ selection: { lanes: [], steps: [], connections: [] }, pendingInsert: null });
     },
 
     setPendingInsert: (laneId, row) => {

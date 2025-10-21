@@ -108,6 +108,15 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
 
   const minimumHeight = LANE_PADDING * 2 + ROW_HEIGHT;
 
+  const handleLaneRowSelect = useCallback(
+    (laneId: string, row: number) => {
+      if (isSpacePanning) return;
+      setPendingInsert(laneId, row);
+      setSelection({ lanes: [laneId], steps: [], connections: [] });
+    },
+    [isSpacePanning, setPendingInsert, setSelection]
+  );
+
   const laneNodes: Node[] = useMemo(
     () =>
       sortedLanes.map((lane) => ({
@@ -123,12 +132,13 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
           pendingRow: pendingInsert?.laneId === lane.id ? pendingInsert.row : null,
           rowHeight: ROW_HEIGHT,
           lanePadding: LANE_PADDING,
+          onRowHandleClick: handleLaneRowSelect,
         },
         selectable: false,
         draggable: false,
         zIndex: 0,
       })),
-    [laneHeights, minimumHeight, pendingInsert, sortedLanes]
+    [handleLaneRowSelect, laneHeights, minimumHeight, pendingInsert, sortedLanes]
   );
 
   const projectPointer = useCallback(
@@ -143,10 +153,9 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
   const selectLaneRow = useCallback(
     (laneId: string, diagramY: number) => {
       const row = Math.max(0, Math.floor((diagramY - LANE_PADDING) / ROW_HEIGHT));
-      setPendingInsert(laneId, row);
-      setSelection({ lanes: [laneId], steps: [], connections: [] });
+      handleLaneRowSelect(laneId, row);
     },
-    [setPendingInsert, setSelection]
+    [handleLaneRowSelect]
   );
 
   const stepNodes: Node[] = useMemo(
