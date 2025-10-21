@@ -7,12 +7,12 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Swimlane Studio',
   description: '業務フローやシステム開発に必要なフロー図作成をスイムレーン形式で作成する専用アプリ',
-  metadataBase: new URL('https://swimlane.studio'),
+  metadataBase: new URL('https://staging-swimlane-studio.vercel.app'),
   openGraph: {
     title: 'Swimlane Studio',
     description:
       '業務フローやシステム開発に必要なフロー図作成をスイムレーン形式で作成する専用アプリ',
-    url: 'https://swimlane.studio',
+    url: 'https://staging-swimlane-studio.vercel.app',
     siteName: 'Swimlane Studio',
     locale: 'ja_JP',
     type: 'website',
