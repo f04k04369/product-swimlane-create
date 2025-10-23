@@ -7,7 +7,6 @@ import ReactFlow, {
   MiniMap,
   Node,
   type OnMove,
-  type Viewport,
   useReactFlow,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
