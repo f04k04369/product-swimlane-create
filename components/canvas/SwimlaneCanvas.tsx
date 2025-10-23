@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent, type TouchEvent, type RefObject } from 'react';
-import ReactFlow, { Background, Connection, Controls, Edge, MiniMap, Node, type Viewport, useReactFlow } from 'reactflow';
+import ReactFlow, {
+  Background,
+  Connection,
+  Controls,
+  Edge,
+  MiniMap,
+  Node,
+  type OnMove,
+  type Viewport,
+  useReactFlow,
+} from 'reactflow';
 import 'reactflow/dist/style.css';
 
 import { LaneNode } from '@/components/canvas/LaneNode';
@@ -223,8 +233,8 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     return Math.max(...diagram.lanes.map((lane) => laneHeights.get(lane.id) ?? minimumHeight));
   }, [diagram.lanes, laneHeights, minimumHeight]);
 
-  const clampViewport = useCallback(
-    (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
+  const clampViewport = useCallback<OnMove>(
+    (_event, viewport) => {
       const clampedY = Math.min(viewport.y, 0);
       if (clampedY === viewport.y) return;
       setViewport({ ...viewport, y: clampedY });

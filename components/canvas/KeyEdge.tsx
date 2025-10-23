@@ -229,7 +229,7 @@ export const KeyEdge = memo(
         start: buildMarker(startMarkerKind, 'start', startAngle + 180),
         end: buildMarker(endMarkerKind, 'end', endAngle),
       };
-    }, [endAngle, endMarkerKind, id, markerSize, sourcePosition, startAngle, startMarkerKind, strokeColor, targetPosition]);
+    }, [endAngle, endMarkerKind, id, markerSize, startAngle, startMarkerKind, strokeColor]);
 
     const snapValue = (value: number, candidates: number[]) => {
       for (const candidate of candidates) {
