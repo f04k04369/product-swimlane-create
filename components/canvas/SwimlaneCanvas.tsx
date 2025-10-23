@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent, type TouchEvent, type RefObject } from 'react';
-import ReactFlow, { Background, Connection, Controls, Edge, MiniMap, Node, useReactFlow } from 'reactflow';
+import ReactFlow, { Background, Connection, Controls, Edge, MiniMap, Node, type Viewport, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 import { LaneNode } from '@/components/canvas/LaneNode';
+import { LaneHeaderNode } from '@/components/canvas/LaneHeaderNode';
 import { StepNode } from '@/components/canvas/StepNode';
 import { KeyEdge, type KeyEdgeData } from '@/components/canvas/KeyEdge';
-import { computeLaneHeight, deriveLanePositionX, LANE_PADDING, LANE_WIDTH, ROW_HEIGHT } from '@/lib/diagram/layout';
 import { useDiagramStore } from '@/state/useDiagramStore';
+import { computeLaneHeight, deriveLanePositionX, LANE_PADDING, LANE_WIDTH, ROW_HEIGHT } from '@/lib/diagram/layout';
+
+const CANVAS_TOP_PADDING = 80;
 const nodeTypes = {
   lane: LaneNode,
+  laneHeader: LaneHeaderNode,
   step: StepNode,
 };
 
@@ -39,7 +43,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
   const setPendingInsert = useDiagramStore((state) => state.setPendingInsert);
   const clearPendingInsert = useDiagramStore((state) => state.clearPendingInsert);
   const [isSpacePanning, setIsSpacePanning] = useState(false);
-  const { project } = useReactFlow();
+  const { project, setViewport } = useReactFlow();
 
   useEffect(() => {
     const container = canvasRef.current;
@@ -141,11 +145,32 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     [handleLaneRowSelect, laneHeights, minimumHeight, pendingInsert, sortedLanes]
   );
 
+  const laneHeaderNodes: Node[] = useMemo(
+    () =>
+      sortedLanes.map((lane) => ({
+        id: `lane-header-${lane.id}`,
+        type: 'laneHeader',
+        position: { x: deriveLanePositionX(lane.order), y: 0 },
+        data: {
+          id: lane.id,
+          title: lane.title,
+          color: lane.color,
+          width: LANE_WIDTH,
+          isSelected: selection.lanes.includes(lane.id),
+        },
+        selectable: false,
+        draggable: false,
+        focusable: false,
+        zIndex: 10,
+      })),
+    [selection.lanes, sortedLanes]
+  );
+
   const projectPointer = useCallback(
     (clientX: number, clientY: number) => {
       if (!canvasRef.current) return null;
       const bounds = canvasRef.current.getBoundingClientRect();
-      return project({ x: clientX - bounds.left, y: clientY - bounds.top });
+      return project({ x: clientX - bounds.left, y: clientY - bounds.top - CANVAS_TOP_PADDING });
     },
     [canvasRef, project]
   );
@@ -191,12 +216,21 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     [diagram.steps, laneMap, selection.steps, setSelection]
   );
 
-  const nodes = useMemo(() => [...laneNodes, ...stepNodes], [laneNodes, stepNodes]);
+  const nodes = useMemo(() => [...laneNodes, ...stepNodes, ...laneHeaderNodes], [laneHeaderNodes, laneNodes, stepNodes]);
 
   const canvasHeight = useMemo(() => {
     if (!diagram.lanes.length) return minimumHeight;
     return Math.max(...diagram.lanes.map((lane) => laneHeights.get(lane.id) ?? minimumHeight));
   }, [diagram.lanes, laneHeights, minimumHeight]);
+
+  const clampViewport = useCallback(
+    (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
+      const clampedY = Math.min(viewport.y, 0);
+      if (clampedY === viewport.y) return;
+      setViewport({ ...viewport, y: clampedY });
+    },
+    [setViewport]
+  );
 
   const edges: Edge<KeyEdgeData>[] = useMemo(
     () =>
@@ -367,7 +401,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     (event: MouseEvent, node: Node) => {
       if (isSpacePanning) return;
       event.stopPropagation();
-      if (node.type === 'lane') {
+      if (node.type === 'lane' || node.type === 'laneHeader') {
         const laneId = (node.data as { id?: string })?.id;
         if (!laneId) return;
         const projected = projectPointer(event.clientX, event.clientY);
@@ -387,7 +421,11 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     <div
       ref={canvasRef}
       className="relative flex-1 bg-slate-50"
-      style={{ minHeight: canvasHeight, cursor: isSpacePanning ? 'grab' : 'default' }}
+      style={{
+        minHeight: canvasHeight + CANVAS_TOP_PADDING,
+        paddingTop: CANVAS_TOP_PADDING,
+        cursor: isSpacePanning ? 'grab' : 'default',
+      }}
     >
       <ReactFlow
         className={`h-full w-full ${isSpacePanning ? 'cursor-grab' : 'cursor-default'}`}
@@ -415,6 +453,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         onNodeClick={handleNodeClick}
         onEdgeClick={handleEdgeClick}
         onSelectionChange={handleSelectionChange}
+        onMove={clampViewport}
         edgeUpdaterRadius={16}
       >
         <Background gap={24} size={1} color="#e5e7eb" />
