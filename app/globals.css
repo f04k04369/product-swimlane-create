@@ -43,3 +43,9 @@ body {
 .react-flow__node-lane {
   pointer-events: none !important;
 }
+
+.react-flow__node-laneBackground {
+  pointer-events: none !important;
+  cursor: default;
+  z-index: 1;
+}

@@ -23,6 +23,7 @@ export const SwimlaneEditor = () => {
   const canRedo = useDiagramStore((state) => state.canRedo);
   const setSelection = useDiagramStore((state) => state.setSelection);
   const pendingInsert = useDiagramStore((state) => state.pendingInsert);
+  const requestScrollToTop = useDiagramStore((state) => state.requestScrollToTop);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [mermaidOpen, setMermaidOpen] = useState(false);
@@ -192,6 +193,9 @@ export const SwimlaneEditor = () => {
             </Button>
             <Button type="button" variant="outline" onClick={() => setAuditOpen(true)}>
               監査ログ
+            </Button>
+            <Button type="button" variant="outline" onClick={requestScrollToTop}>
+              レーン最上部へ
             </Button>
             <span className="mx-2 hidden h-6 w-px bg-border md:block" />
             <Button

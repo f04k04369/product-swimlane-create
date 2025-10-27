@@ -84,7 +84,7 @@ export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
           onSelect(id);
         }
       }}
-      className="relative flex h-full w-full focus:outline-none"
+      className="react-flow__node-step relative flex h-full w-full focus:outline-none"
     >
       <div className="pointer-events-none absolute left-2 top-2 z-10 rounded bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm">
         行 {order + 1}

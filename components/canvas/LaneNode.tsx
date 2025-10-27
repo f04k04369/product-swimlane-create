@@ -1,4 +1,7 @@
+import type { CSSProperties } from 'react';
 import type { NodeProps } from 'reactflow';
+
+import { getContrastingTextColor, hexToRgb, mixRgb, rgbToCss, rgbaToCss } from '@/components/canvas/laneColors';
 
 interface LaneNodeData {
   id: string;
@@ -18,12 +21,28 @@ export const LaneNode = ({ data }: NodeProps<LaneNodeData>) => {
   const rowAreaHeight = Math.max(0, height - lanePadding * 2);
   const rowCount = Math.max(1, Math.round(rowAreaHeight / rowHeight));
   const handleThickness = 6;
+  const baseColor = hexToRgb(color);
+  const laneFillColor = mixRgb(baseColor, { r: 255, g: 255, b: 255 }, 0.9);
+  const laneBorderTint = mixRgb(baseColor, { r: 148, g: 163, b: 184 }, 0.55);
+  const headerFillColor = mixRgb(baseColor, { r: 255, g: 255, b: 255 }, 0.7);
+  const headerTextColor = getContrastingTextColor(headerFillColor);
 
+  const inlineHeaderStyle: CSSProperties = {
+    backgroundColor: rgbToCss(headerFillColor),
+    borderBottom: `1px solid ${rgbaToCss(laneBorderTint, 0.6)}`,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    color: headerTextColor,
+    opacity: 0,
+    pointerEvents: 'none',
+    visibility: 'hidden',
+  };
   return (
     <div
       data-lane-id={id}
       style={{
-        borderColor: `${color}40`,
+        borderColor: rgbaToCss(laneBorderTint, 0.45),
+        backgroundColor: rgbaToCss(laneFillColor, 0.85),
         height,
         width,
         cursor: 'default',
@@ -52,8 +71,13 @@ export const LaneNode = ({ data }: NodeProps<LaneNodeData>) => {
           />
         );
       })}
-      <div className="h-12" aria-hidden>
-        <span className="sr-only">{title}</span>
+      <div
+        aria-hidden
+        className="rounded-t-2xl px-4 py-3 text-sm font-semibold"
+        data-lane-inline-header="true"
+        style={inlineHeaderStyle}
+      >
+        <span data-inline-header-text style={{ color: headerTextColor }}>{title}</span>
       </div>
       <div className="flex-1" />
     </div>

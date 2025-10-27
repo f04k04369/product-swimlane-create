@@ -44,6 +44,7 @@ interface DiagramStore {
   canUndo: boolean;
   canRedo: boolean;
   pendingInsert: { laneId: ElementID; row: number } | null;
+  scrollToTopCounter: number;
   setDiagram: (diagram: Diagram, options?: { label?: string; preserveLayout?: boolean }) => void;
   addLane: (title?: string) => void;
   updateLane: (id: ElementID, updates: LaneUpdate) => void;
@@ -89,6 +90,7 @@ interface DiagramStore {
   clearSelection: () => void;
   setPendingInsert: (laneId: ElementID, row: number) => void;
   clearPendingInsert: () => void;
+  requestScrollToTop: () => void;
   undo: () => void;
   redo: () => void;
   reset: () => void;
@@ -199,6 +201,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
     canUndo: false,
     canRedo: false,
     pendingInsert: null,
+    scrollToTopCounter: 0,
 
     setDiagram: (diagram, options) => {
       const { label = 'import diagram', preserveLayout = false } = options ?? {};
@@ -898,6 +901,9 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
 
     clearPendingInsert: () => {
       set({ pendingInsert: null });
+    },
+    requestScrollToTop: () => {
+      set((state) => ({ scrollToTopCounter: state.scrollToTopCounter + 1 }));
     },
 
     undo: () => {
