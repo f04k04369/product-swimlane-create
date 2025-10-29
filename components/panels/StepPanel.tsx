@@ -1,8 +1,11 @@
+'use client';
+
 import { ChangeEvent, DragEvent, useMemo, useState } from 'react';
 import classNames from 'classnames';
 import { useDiagramStore } from '@/state/useDiagramStore';
 import { Button } from '@/components/ui/button';
 import { RowShiftPanel } from '@/components/panels/RowShiftPanel';
+import { PhasePanel } from '@/components/panels/PhasePanel';
 import type { StepKind } from '@/lib/diagram/types';
 
 const inputStyles =
@@ -15,7 +18,7 @@ const handleNumber = (event: ChangeEvent<HTMLInputElement>, fallback = 0) => {
   return Number.isFinite(value) ? value : fallback;
 };
 
-export const StepPanel = () => {
+const StepPanelInner = () => {
   const { lanes, steps, connections } = useDiagramStore((state) => state.diagram);
   const selection = useDiagramStore((state) => state.selection);
   const updateStep = useDiagramStore((state) => state.updateStep);
@@ -550,4 +553,13 @@ export const StepPanel = () => {
       </div>
     </aside>
   );
+};
+
+export const StepPanel = () => {
+  const selection = useDiagramStore((state) => state.selection);
+  const selectedPhaseId = selection.phases[0] ?? null;
+  if (selectedPhaseId) {
+    return <PhasePanel phaseId={selectedPhaseId} />;
+  }
+  return <StepPanelInner />;
 };

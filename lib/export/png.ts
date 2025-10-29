@@ -1,13 +1,45 @@
 import { toPng } from 'html-to-image';
 
-const LANE_BOUNDS_SELECTORS = ['.react-flow__node', '.react-flow__edge', '.react-flow__connection', '[data-lane-header="true"]'];
+const LANE_BOUNDS_SELECTORS = [
+  '.react-flow__node',
+  '.react-flow__edge',
+  '.react-flow__connection',
+  '[data-lane-header="true"]',
+  '[data-phase-overlay="true"]',
+];
 const CONTENT_BOUNDS_SELECTORS = [
   '.react-flow__node-step',
   '[data-lane-inline-header="true"]',
   '.react-flow__edge-path',
   '.react-flow__edge',
   '.export-lane-header-clone',
+  '.react-flow__node-phaseLabel',
+  '[data-phase-overlay="true"]',
 ];
+
+const DEFAULT_PIXEL_RATIO = 2;
+
+export interface DiagramContentBounds {
+  minX: number;
+  minY: number;
+  width: number;
+  height: number;
+}
+
+export interface DiagramPngCapture {
+  dataUrl: string;
+  exportWidth: number;
+  exportHeight: number;
+  pixelRatio: number;
+  contentBounds: DiagramContentBounds | null;
+}
+
+export interface DiagramSelectionArea {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 interface ViewportTransform {
   translateX: number;
@@ -24,7 +56,7 @@ const parseViewportTransform = (value: string): ViewportTransform => {
   if (matrixMatch) {
     const parts = matrixMatch[1].split(',').map((part) => Number.parseFloat(part.trim()));
     if (parts.length >= 6 && parts.every((part) => Number.isFinite(part))) {
-      const [a, b, _c, d, e, f] = parts;
+      const [a, b, , , e, f] = parts;
       const scale = Math.sqrt(a * a + b * b) || 1;
       return { translateX: e, translateY: f, scale };
     }
@@ -92,11 +124,31 @@ const wait = (ms: number) =>
     setTimeout(() => resolve(), ms);
   });
 
-export const exportDiagramToPng = async (element: HTMLElement, filename = 'swimlane.png') => {
+const downloadPngDataUrl = (dataUrl: string, filename: string) => {
+  const link = document.createElement('a');
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+const loadImage = (dataUrl: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('PNGプレビューの読み込みに失敗しました'));
+    image.src = dataUrl;
+  });
+
+const captureDiagram = async (
+  element: HTMLElement,
+  { pixelRatio = DEFAULT_PIXEL_RATIO }: { pixelRatio?: number } = {}
+): Promise<DiagramPngCapture> => {
   const viewport = element.querySelector<HTMLElement>('.react-flow__viewport');
   const reactFlowElement = element.querySelector<HTMLElement>('.react-flow');
 
-  const padding = 48;
   const cleanup: Array<() => void> = [];
 
   const overlayHeaders = Array.from(element.querySelectorAll<HTMLElement>('[data-lane-header="true"]'));
@@ -159,8 +211,12 @@ export const exportDiagramToPng = async (element: HTMLElement, filename = 'swiml
 
   const laneBounds = collectDiagramBounds(element);
   const contentBounds = collectDiagramBounds(element, CONTENT_BOUNDS_SELECTORS) ?? laneBounds;
-  const horizontalPadding = 200;
-  const verticalPadding = 200;
+  const horizontalPadding = 120;
+  const verticalPadding = 120;
+  let exportWidth = element.clientWidth;
+  let exportHeight = element.clientHeight;
+  let translatedContentBounds: DiagramContentBounds | null = null;
+  const phaseOverlays = Array.from(element.querySelectorAll<HTMLElement>('[data-phase-overlay="true"]'));
 
   if (viewport && laneBounds && contentBounds) {
     const computedTransform = window.getComputedStyle(viewport).transform;
@@ -176,17 +232,35 @@ export const exportDiagramToPng = async (element: HTMLElement, filename = 'swiml
     viewport.style.transition = 'none';
     viewport.style.transform = `translate(${translateX + shiftX}px, ${translateY + shiftY}px) scale(${scale})`;
 
+    const overlayRestorers = phaseOverlays.map((overlay) => {
+      const previousTransform = overlay.style.transform;
+      const overlayComputed = window.getComputedStyle(overlay).transform;
+      const { translateX: overlayX, translateY: overlayY, scale: overlayScale } = parseViewportTransform(overlayComputed);
+      overlay.style.transform = `translate(${overlayX + shiftX}px, ${overlayY + shiftY}px) scale(${overlayScale})`;
+      return () => {
+        overlay.style.transform = previousTransform;
+      };
+    });
+
     cleanup.push(() => {
       viewport.style.transform = originalTransform;
       viewport.style.transition = originalTransition;
+      overlayRestorers.forEach((restore) => restore());
     });
+
+    translatedContentBounds = {
+      minX: horizontalPadding,
+      minY: verticalPadding,
+      width: contentBounds.width,
+      height: contentBounds.height,
+    };
   }
 
   if (contentBounds) {
     const contentWidth = Math.max(1, Math.ceil(contentBounds.width));
     const contentHeight = Math.max(1, Math.ceil(contentBounds.height));
-    const exportWidth = contentWidth + horizontalPadding * 2;
-    const exportHeight = contentHeight + verticalPadding * 2;
+    exportWidth = contentWidth + horizontalPadding * 2;
+    exportHeight = contentHeight + verticalPadding * 2;
 
     const originalContainerWidth = element.style.width;
     const originalContainerHeight = element.style.height;
@@ -221,7 +295,7 @@ export const exportDiagramToPng = async (element: HTMLElement, filename = 'swiml
 
   try {
     dataUrl = await toPng(element, {
-      pixelRatio: 2,
+      pixelRatio,
       backgroundColor: '#ffffff',
       cacheBust: true,
     });
@@ -235,10 +309,100 @@ export const exportDiagramToPng = async (element: HTMLElement, filename = 'swiml
     });
   }
 
-  const link = document.createElement('a');
-  link.href = dataUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  if (exportWidth <= 0 || exportHeight <= 0) {
+    const rect = element.getBoundingClientRect();
+    exportWidth = Math.max(1, Math.round(rect.width));
+    exportHeight = Math.max(1, Math.round(rect.height));
+  }
+
+  if (!translatedContentBounds && contentBounds) {
+    translatedContentBounds = {
+      minX: contentBounds.minX,
+      minY: contentBounds.minY,
+      width: contentBounds.width,
+      height: contentBounds.height,
+    };
+  }
+
+  return {
+    dataUrl,
+    exportWidth,
+    exportHeight,
+    pixelRatio,
+    contentBounds: translatedContentBounds,
+  };
+};
+
+export const captureDiagramPreview = async (
+  element: HTMLElement,
+  options?: { pixelRatio?: number }
+): Promise<DiagramPngCapture> => captureDiagram(element, options);
+
+export const cropCapturedDiagram = async (
+  capture: DiagramPngCapture,
+  selection: DiagramSelectionArea
+): Promise<string> => {
+  const clampedX = Math.max(0, Math.min(selection.x, capture.exportWidth));
+  const clampedY = Math.max(0, Math.min(selection.y, capture.exportHeight));
+  const maxWidth = capture.exportWidth - clampedX;
+  const maxHeight = capture.exportHeight - clampedY;
+  const width = Math.max(1, Math.min(selection.width, maxWidth));
+  const height = Math.max(1, Math.min(selection.height, maxHeight));
+
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw new Error('有効な選択範囲を指定してください');
+  }
+
+  const image = await loadImage(capture.dataUrl);
+  const canvas = document.createElement('canvas');
+  const pixelWidth = Math.max(1, Math.round(width * capture.pixelRatio));
+  const pixelHeight = Math.max(1, Math.round(height * capture.pixelRatio));
+  canvas.width = pixelWidth;
+  canvas.height = pixelHeight;
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('キャンバスコンテキストを取得できませんでした');
+  }
+
+  const sourceX = Math.round(clampedX * capture.pixelRatio);
+  const sourceY = Math.round(clampedY * capture.pixelRatio);
+  const sourceWidth = Math.round(width * capture.pixelRatio);
+  const sourceHeight = Math.round(height * capture.pixelRatio);
+
+  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, pixelWidth, pixelHeight);
+
+  return canvas.toDataURL('image/png');
+};
+
+export const exportCroppedDiagramToPng = async (
+  capture: DiagramPngCapture,
+  selection: DiagramSelectionArea,
+  filename: string
+) => {
+  const croppedDataUrl = await cropCapturedDiagram(capture, selection);
+  downloadPngDataUrl(croppedDataUrl, filename);
+};
+
+export const exportDiagramToPng = async (element: HTMLElement, filename = 'swimlane.png') => {
+  const capture = await captureDiagram(element, { pixelRatio: DEFAULT_PIXEL_RATIO });
+  const bounds = capture.contentBounds;
+  if (!bounds) {
+    downloadPngDataUrl(capture.dataUrl, filename);
+    return;
+  }
+
+  const margin = 32;
+  const selectionX = Math.max(0, bounds.minX - margin);
+  const selectionY = Math.max(0, bounds.minY - margin);
+  const maxWidth = capture.exportWidth - selectionX;
+  const maxHeight = capture.exportHeight - selectionY;
+  const selection: DiagramSelectionArea = {
+    x: selectionX,
+    y: selectionY,
+    width: Math.min(maxWidth, bounds.width + margin * 2),
+    height: Math.min(maxHeight, bounds.height + margin * 2),
+  };
+
+  await exportCroppedDiagramToPng(capture, selection, filename);
 };

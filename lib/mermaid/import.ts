@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid/non-secure';
 import { deriveStepX, rowIndexFromY, yForRow } from '@/lib/diagram/layout';
-import type { Connection, Diagram, Lane, MarkerKind, Step, StepKind } from '@/lib/diagram/types';
+import type { Connection, Diagram, Lane, MarkerKind, PhaseGroup, Step, StepKind } from '@/lib/diagram/types';
 
 class MermaidParseError extends Error {}
 
@@ -46,6 +46,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
   const lanes: Lane[] = [];
   const steps: Step[] = [];
   const stepAliasMap = new Map<string, string>();
+  const phaseMetas: PhaseGroup[] = [];
 
   if (
     persistedState &&
@@ -64,6 +65,12 @@ export const importMermaidToDiagram = (content: string): Diagram => {
     const sanitizedConnections = ((persistedState.connections ?? []) as Connection[])
       .map((connection) => sanitizeConnection(connection, sanitizedSteps))
       .filter((connection): connection is Connection => Boolean(connection));
+    const sanitizedPhases = Array.isArray(persistedState.phaseGroups)
+      ? (persistedState.phaseGroups as PhaseGroup[])
+          .map((phase, index) => sanitizePhaseGroup(phase, index))
+          .filter(Boolean)
+          .sort((a, b) => a.startRow - b.startRow)
+      : [];
 
     const now = new Date().toISOString();
 
@@ -73,6 +80,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       lanes: sanitizedLanes,
       steps: sanitizedSteps,
       connections: sanitizedConnections,
+      phaseGroups: sanitizedPhases,
       createdAt: diagramMeta.createdAt ?? now,
       updatedAt: now,
     };
@@ -157,6 +165,15 @@ export const importMermaidToDiagram = (content: string): Diagram => {
     throw new MermaidParseError('レーンまたはステップが検出できませんでした');
   }
 
+  const phaseMetaRegex = /%%\s*phase-meta:(.+)/g;
+  let phaseMatch: RegExpExecArray | null;
+  while ((phaseMatch = phaseMetaRegex.exec(cleaned)) !== null) {
+    const parsed = parseJsonMeta('phase-meta', phaseMatch[1]);
+    if (parsed) {
+      phaseMetas.push(sanitizePhaseGroup(parsed as PhaseGroup, phaseMetas.length));
+    }
+  }
+
   const edgeMetas: Array<Record<string, unknown>> = [];
   const edgeMetaRegex = /%%\s*edge-meta:(.+)/g;
   let edgeMetaMatch: RegExpExecArray | null;
@@ -233,6 +250,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
     lanes,
     steps,
     connections,
+    phaseGroups: phaseMetas,
     createdAt: diagramMeta.createdAt ?? now,
     updatedAt: now,
   };
@@ -296,5 +314,18 @@ const sanitizeConnection = (connection: Connection, steps: Step[]): Connection |
     endMarker,
     markerSize,
     label,
+  };
+};
+
+const sanitizePhaseGroup = (phase: PhaseGroup, index: number): PhaseGroup => {
+  const rawStart = typeof phase.startRow === 'number' ? Math.floor(phase.startRow) : index;
+  const rawEnd = typeof phase.endRow === 'number' ? Math.floor(phase.endRow) : rawStart;
+  const normalizedStart = Math.max(0, Math.min(rawStart, rawEnd));
+  const normalizedEnd = Math.max(normalizedStart, Math.max(rawStart, rawEnd));
+  return {
+    id: typeof phase.id === 'string' ? phase.id : nanoid(),
+    title: typeof phase.title === 'string' ? phase.title : `フェーズ ${index + 1}`,
+    startRow: normalizedStart,
+    endRow: normalizedEnd,
   };
 };

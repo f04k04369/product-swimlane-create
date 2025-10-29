@@ -7,7 +7,7 @@ import { SwimlaneCanvas } from '@/components/canvas/SwimlaneCanvas';
 import { useDiagramStore } from '@/state/useDiagramStore';
 import { MermaidDialog } from '@/components/export/MermaidDialog';
 import { AuditLogDialog } from '@/components/export/AuditLogDialog';
-import { exportDiagramToPng } from '@/lib/export/png';
+import { PngExportDialog } from '@/components/export/PngExportDialog';
 import type { StepKind } from '@/lib/diagram/types';
 
 export const SwimlaneEditor = () => {
@@ -28,6 +28,7 @@ export const SwimlaneEditor = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [mermaidOpen, setMermaidOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [pngOpen, setPngOpen] = useState(false);
   const [status, setStatus] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
   const [lanePanelOpen, setLanePanelOpen] = useState(true);
   const [stepPanelOpen, setStepPanelOpen] = useState(true);
@@ -91,16 +92,6 @@ export const SwimlaneEditor = () => {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [canRedo, canUndo, redo, undo]);
-
-  const handleExportPng = async () => {
-    if (!canvasRef.current) return;
-    try {
-      await exportDiagramToPng(canvasRef.current, `${diagram.title || 'swimlane'}.png`);
-      setStatus({ type: 'info', text: 'PNGをダウンロードしました' });
-    } catch (error) {
-      setStatus({ type: 'error', text: (error as Error).message ?? 'PNG出力に失敗しました' });
-    }
-  };
 
   return (
     <ReactFlowProvider>
@@ -188,7 +179,7 @@ export const SwimlaneEditor = () => {
             <Button type="button" variant="outline" onClick={() => setMermaidOpen(true)}>
               Mermaid入出力
             </Button>
-            <Button type="button" variant="outline" onClick={handleExportPng}>
+            <Button type="button" variant="outline" onClick={() => setPngOpen(true)}>
               PNGエクスポート
             </Button>
             <Button type="button" variant="outline" onClick={() => setAuditOpen(true)}>
@@ -240,6 +231,13 @@ export const SwimlaneEditor = () => {
         <AuditLogDialog
           open={auditOpen}
           onClose={() => setAuditOpen(false)}
+          onStatus={(type, text) => setStatus({ type, text })}
+        />
+        <PngExportDialog
+          open={pngOpen}
+          onClose={() => setPngOpen(false)}
+          canvasRef={canvasRef}
+          filename={`${diagram.title || 'swimlane'}.png`}
           onStatus={(type, text) => setStatus({ type, text })}
         />
       </div>

@@ -45,6 +45,7 @@ export const createEmptyDiagram = (): Diagram => {
     lanes,
     steps,
     connections: [],
+    phaseGroups: [],
     createdAt: now,
     updatedAt: now,
   };
