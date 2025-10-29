@@ -1,25 +1,36 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent, type TouchEvent, type RefObject } from 'react';
-import ReactFlow, {
-  Background,
-  Connection,
-  Controls,
-  Edge,
-  MiniMap,
-  Node,
-  type OnMove,
-  useReactFlow,
-} from 'reactflow';
+'use client';
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type TouchEvent,
+  type RefObject,
+} from 'react';
+import ReactFlow, { Background, Connection, Controls, Edge, MiniMap, Node, type OnMove, useReactFlow } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 import { LaneNode } from '@/components/canvas/LaneNode';
 import { LaneHeaderNode } from '@/components/canvas/LaneHeaderNode';
+import { LaneBackgroundNode } from '@/components/canvas/LaneBackgroundNode';
+import { PhaseLabel } from '@/components/canvas/PhaseLabelNode';
 import { StepNode } from '@/components/canvas/StepNode';
 import { KeyEdge, type KeyEdgeData } from '@/components/canvas/KeyEdge';
 import { useDiagramStore } from '@/state/useDiagramStore';
-import { computeLaneHeight, deriveLanePositionX, LANE_PADDING, LANE_WIDTH, ROW_HEIGHT } from '@/lib/diagram/layout';
+import { computeLaneHeight, deriveLanePositionX, LANE_PADDING, LANE_WIDTH, ROW_HEIGHT, rowIndexFromY } from '@/lib/diagram/layout';
+import { PHASE_GAP_TO_LANE, PHASE_LABEL_MIN_LEFT, PHASE_LABEL_WIDTH } from '@/lib/diagram/constants';
+import type { PhaseGroup } from '@/lib/diagram/types';
 
-const CANVAS_TOP_PADDING = 80;
+
+interface PhaseResizeState {
+  id: string;
+  direction: 'start' | 'end';
+}
 const nodeTypes = {
+  laneBackground: LaneBackgroundNode,
   lane: LaneNode,
   laneHeader: LaneHeaderNode,
   step: StepNode,
@@ -42,6 +53,7 @@ interface SwimlaneCanvasProps {
 export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
   const diagram = useDiagramStore((state) => state.diagram);
   const selection = useDiagramStore((state) => state.selection);
+  const selectedPhaseIds = useMemo(() => selection.phases ?? [], [selection.phases]);
   const moveStep = useDiagramStore((state) => state.moveStep);
   const addConnection = useDiagramStore((state) => state.addConnection);
   const removeConnection = useDiagramStore((state) => state.removeConnection);
@@ -52,7 +64,12 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
   const setPendingInsert = useDiagramStore((state) => state.setPendingInsert);
   const clearPendingInsert = useDiagramStore((state) => state.clearPendingInsert);
   const [isSpacePanning, setIsSpacePanning] = useState(false);
-  const { project, setViewport } = useReactFlow();
+  const scrollToTopCounter = useDiagramStore((state) => state.scrollToTopCounter);
+  const addPhaseGroup = useDiagramStore((state) => state.addPhaseGroup);
+  const updatePhaseGroup = useDiagramStore((state) => state.updatePhaseGroup);
+  const { project, setViewport, getViewport } = useReactFlow();
+  const [phaseResize, setPhaseResize] = useState<PhaseResizeState | null>(null);
+  const [selectedPhaseRow, setSelectedPhaseRow] = useState<number | null>(null);
 
   useEffect(() => {
     const container = canvasRef.current;
@@ -179,7 +196,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     (clientX: number, clientY: number) => {
       if (!canvasRef.current) return null;
       const bounds = canvasRef.current.getBoundingClientRect();
-      return project({ x: clientX - bounds.left, y: clientY - bounds.top - CANVAS_TOP_PADDING });
+      return project({ x: clientX - bounds.left, y: clientY - bounds.top });
     },
     [canvasRef, project]
   );
@@ -188,6 +205,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     (laneId: string, diagramY: number) => {
       const row = Math.max(0, Math.floor((diagramY - LANE_PADDING) / ROW_HEIGHT));
       handleLaneRowSelect(laneId, row);
+      setSelectedPhaseRow(row);
     },
     [handleLaneRowSelect]
   );
@@ -225,21 +243,295 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     [diagram.steps, laneMap, selection.steps, setSelection]
   );
 
-  const nodes = useMemo(() => [...laneNodes, ...stepNodes, ...laneHeaderNodes], [laneHeaderNodes, laneNodes, stepNodes]);
-
   const canvasHeight = useMemo(() => {
     if (!diagram.lanes.length) return minimumHeight;
     return Math.max(...diagram.lanes.map((lane) => laneHeights.get(lane.id) ?? minimumHeight));
   }, [diagram.lanes, laneHeights, minimumHeight]);
 
-  const clampViewport = useCallback<OnMove>(
-    (_event, viewport) => {
-      const clampedY = Math.min(viewport.y, 0);
-      if (clampedY === viewport.y) return;
-      setViewport({ ...viewport, y: clampedY });
+  const laneArea = useMemo(() => {
+    if (!sortedLanes.length) return null;
+    const firstOrder = sortedLanes[0].order;
+    const lastOrder = sortedLanes[sortedLanes.length - 1].order;
+    const left = Math.max(0, deriveLanePositionX(firstOrder) - LANE_PADDING * 0.5);
+    const right = deriveLanePositionX(lastOrder) + LANE_WIDTH + LANE_PADDING * 0.5;
+    return {
+      left,
+      width: Math.max(right - left, LANE_WIDTH + LANE_PADDING),
+    };
+  }, [sortedLanes]);
+
+  const contentHeight = useMemo(() => {
+    if (!diagram.steps.length) return canvasHeight;
+    const maxBottom = Math.max(...diagram.steps.map((step) => step.y + step.height));
+    return Math.max(canvasHeight, maxBottom + LANE_PADDING);
+  }, [canvasHeight, diagram.steps]);
+
+  const maxRow = useMemo(() => Math.max(0, Math.ceil((contentHeight - LANE_PADDING) / ROW_HEIGHT) - 1), [contentHeight]);
+
+  const laneAreaLeft = laneArea?.left ?? 16;
+
+  const stepRowIndices = useMemo(() => {
+    return diagram.steps.map((step) => {
+      if (typeof step.order === 'number' && Number.isFinite(step.order)) {
+        return Math.max(0, Math.round(step.order));
+      }
+      return Math.max(0, rowIndexFromY(step.y, step.height));
+    });
+  }, [diagram.steps]);
+
+  const maxStepRow = useMemo(() => {
+    if (!stepRowIndices.length) return -1;
+    return Math.max(...stepRowIndices);
+  }, [stepRowIndices]);
+
+  const firstLaneLeft = useMemo(() => {
+    if (!sortedLanes.length) {
+      return laneAreaLeft;
+    }
+    return deriveLanePositionX(sortedLanes[0].order);
+  }, [laneAreaLeft, sortedLanes]);
+
+  const phaseLabelX = useMemo(() => {
+    if (!sortedLanes.length) {
+      return Math.max(PHASE_LABEL_MIN_LEFT, laneAreaLeft + 8);
+    }
+    return Math.max(PHASE_LABEL_MIN_LEFT, firstLaneLeft - PHASE_LABEL_WIDTH - PHASE_GAP_TO_LANE);
+  }, [firstLaneLeft, laneAreaLeft, sortedLanes.length]);
+
+  const phaseGroups = useMemo(() => diagram.phaseGroups ?? [], [diagram.phaseGroups]);
+
+  const maxRowLimit = useMemo(() => Math.max(maxRow, maxStepRow), [maxRow, maxStepRow]);
+
+  const hasStepsInRange = useCallback(
+    (start: number, end: number) => {
+      if (!stepRowIndices.length) return false;
+      const normalizedStart = Math.min(start, end);
+      const normalizedEnd = Math.max(start, end);
+      return stepRowIndices.some((row) => row >= normalizedStart && row <= normalizedEnd);
     },
-    [setViewport]
+    [stepRowIndices]
   );
+
+  const phaseMaxRow = useMemo(
+    () => phaseGroups.reduce((acc, phase) => Math.max(acc, phase.endRow), -1),
+    [phaseGroups]
+  );
+
+  const phaseAddButtonY = useMemo(() => {
+    if (phaseMaxRow >= 0) {
+      return LANE_PADDING + (phaseMaxRow + 1) * ROW_HEIGHT + 16;
+    }
+    return LANE_PADDING - 64;
+  }, [phaseMaxRow]);
+
+  const diagramHeight = useMemo(() => Math.max(canvasHeight, contentHeight), [canvasHeight, contentHeight]);
+
+  const [viewportState, setViewportState] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
+
+  useEffect(() => {
+    setViewportState(getViewport());
+  }, [getViewport]);
+
+  const effectiveMaxRow = useMemo(
+    () => Math.max(maxRowLimit, phaseMaxRow),
+    [maxRowLimit, phaseMaxRow]
+  );
+
+  const rowForNewPhase = useMemo(
+    () => (selectedPhaseRow === null ? null : Math.max(0, Math.min(selectedPhaseRow, effectiveMaxRow))),
+    [effectiveMaxRow, selectedPhaseRow]
+  );
+
+  const rowAlreadyHasPhase = useMemo(
+    () => (rowForNewPhase === null ? false : phaseGroups.some((phase) => rowForNewPhase >= phase.startRow && rowForNewPhase <= phase.endRow)),
+    [phaseGroups, rowForNewPhase]
+  );
+
+  const canAddPhase = useMemo(() => {
+    if (rowForNewPhase === null) return false;
+    if (rowAlreadyHasPhase) return false;
+    if (!hasStepsInRange(rowForNewPhase, rowForNewPhase)) return false;
+    return true;
+  }, [hasStepsInRange, rowAlreadyHasPhase, rowForNewPhase]);
+
+  const phaseAddMessage = useMemo(() => {
+    if (rowForNewPhase === null) return 'フェーズ化したい行をクリックしてください。';
+    if (rowAlreadyHasPhase) return `行${rowForNewPhase + 1}には既にフェーズがあります。`;
+    if (!hasStepsInRange(rowForNewPhase, rowForNewPhase)) return `行${rowForNewPhase + 1}にステップがありません。`;
+    return undefined;
+  }, [hasStepsInRange, rowAlreadyHasPhase, rowForNewPhase]);
+
+  const clampRow = useCallback((row: number) => Math.max(0, Math.min(row, effectiveMaxRow)), [effectiveMaxRow]);
+
+  const rowFromPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      const projected = projectPointer(clientX, clientY);
+      if (!projected) return 0;
+      const diagramY = projected.y;
+      const row = Math.floor((diagramY - LANE_PADDING) / ROW_HEIGHT);
+      return Number.isFinite(row) ? row : 0;
+    },
+    [projectPointer]
+  );
+
+  const laneBackground = useMemo(() => {
+    if (!laneArea || !sortedLanes.length) return [];
+    const height = diagramHeight;
+    return [
+      {
+        id: 'lane-background',
+        type: 'laneBackground',
+        position: { x: laneArea.left, y: 0 },
+        data: { width: laneArea.width, height },
+        selectable: false,
+        draggable: false,
+        zIndex: -1,
+      } satisfies Node,
+    ];
+  }, [diagramHeight, laneArea, sortedLanes.length]);
+
+  const openPhaseEditor = useCallback(
+    (phase: PhaseGroup) => {
+      setSelection({ lanes: [], steps: [], connections: [], phases: [phase.id] });
+    },
+    [setSelection]
+  );
+
+  const handlePhaseResizeStart = useCallback(
+    (phaseId: string, direction: 'start' | 'end', event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      event.preventDefault();
+      setPhaseResize({ id: phaseId, direction });
+      setSelection({ lanes: [], steps: [], connections: [], phases: [phaseId] });
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    },
+    [setSelection]
+  );
+
+  const handleAddPhase = useCallback(() => {
+    if (rowForNewPhase === null || !canAddPhase) {
+      return;
+    }
+    const clamped = clampRow(rowForNewPhase);
+    const newId = addPhaseGroup(clamped, clamped, '');
+    setSelectedPhaseRow(null);
+    setSelection({ lanes: [], steps: [], connections: [], phases: [newId] });
+  }, [addPhaseGroup, canAddPhase, clampRow, rowForNewPhase, setSelection]);
+
+  useEffect(() => {
+    if (!phaseResize) return;
+    const handlePointerMove = (event: PointerEvent) => {
+      const rawRow = rowFromPointer(event.clientX, event.clientY);
+      const row = clampRow(rawRow);
+      const phase = diagram.phaseGroups?.find((item) => item.id === phaseResize.id);
+      if (!phase) return;
+      if (phaseResize.direction === 'start') {
+        const nextStart = Math.min(row, phase.endRow);
+        if (nextStart !== phase.startRow) {
+          updatePhaseGroup(phase.id, { startRow: nextStart });
+        }
+      } else {
+        const nextEnd = Math.max(row, phase.startRow);
+        if (nextEnd !== phase.endRow) {
+          updatePhaseGroup(phase.id, { endRow: nextEnd });
+        }
+      }
+    };
+    const handlePointerUp = () => {
+      setPhaseResize(null);
+    };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp, { once: true });
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [clampRow, diagram.phaseGroups, phaseResize, rowFromPointer, updatePhaseGroup]);
+
+  const nodes = useMemo(
+    () => [...laneBackground, ...laneNodes, ...stepNodes, ...laneHeaderNodes],
+    [laneBackground, laneHeaderNodes, laneNodes, stepNodes]
+  );
+
+  const renderPhaseOverlay = useCallback(() => {
+    if (!laneArea) return null;
+    return (
+      <div
+        className="absolute z-20"
+        data-phase-overlay="true"
+        style={{
+          left: 0,
+          top: 0,
+          transform: `translate(${viewportState.x}px, ${viewportState.y}px) scale(${viewportState.zoom})`,
+          transformOrigin: '0 0',
+          pointerEvents: 'none',
+        }}
+      >
+        {phaseGroups.map((phase) => {
+          const top = LANE_PADDING + phase.startRow * ROW_HEIGHT;
+          const height = Math.max(ROW_HEIGHT, (phase.endRow - phase.startRow + 1) * ROW_HEIGHT);
+          const isActive = selectedPhaseIds.includes(phase.id) || phaseResize?.id === phase.id;
+          return (
+            <div
+              key={phase.id}
+              className="flex justify-center"
+              style={{ position: 'absolute', left: phaseLabelX, top, width: PHASE_LABEL_WIDTH, height, pointerEvents: 'auto' }}
+            >
+              <PhaseLabel
+                id={phase.id}
+                title={phase.title}
+                width={PHASE_LABEL_WIDTH}
+                height={height}
+                isActive={isActive}
+                onEdit={() => openPhaseEditor(phase)}
+                onResizeStart={handlePhaseResizeStart}
+              />
+            </div>
+          );
+        })}
+        <div
+          className="flex flex-col items-center"
+          style={{ position: 'absolute', left: phaseLabelX, top: phaseAddButtonY, width: PHASE_LABEL_WIDTH, pointerEvents: 'auto' }}
+        >
+          <button
+            type="button"
+            className={`pointer-events-auto flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed px-2 py-4 text-xs font-semibold shadow-sm transition-all duration-150 ease-out ${
+              canAddPhase
+                ? 'border-blue-400 bg-white/70 text-blue-600 hover:-translate-y-[1px] hover:bg-blue-50'
+                : 'cursor-not-allowed border-slate-300 bg-white/40 text-slate-400'
+            }`}
+            onClick={() => {
+              if (!canAddPhase) return;
+              handleAddPhase();
+            }}
+            disabled={!canAddPhase}
+          >
+            <span className="text-base leading-none">＋</span>
+            <span className="tracking-widest" style={{ writingMode: 'vertical-rl' }}>
+              {phaseGroups.length ? 'フェーズ追加' : 'フェーズ作成'}
+            </span>
+          </button>
+          {phaseAddMessage && (
+            <span className="mt-2 w-full rounded-md bg-rose-50 px-2 py-1 text-center text-[10px] font-medium text-rose-500 shadow-sm">
+              {phaseAddMessage}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  }, [canAddPhase, handleAddPhase, handlePhaseResizeStart, laneArea, phaseAddButtonY, phaseGroups, phaseLabelX, phaseResize?.id, phaseAddMessage, viewportState.x, viewportState.y, viewportState.zoom, openPhaseEditor, selectedPhaseIds]);
+
+  const handleViewportChange = useCallback<OnMove>((_event, viewport) => {
+    setViewportState(viewport);
+  }, []);
+
+  useEffect(() => {
+    if (!scrollToTopCounter) return;
+    const { x, zoom } = getViewport();
+    const target = { x, y: 0, zoom };
+    setViewport(target, { duration: 300 });
+    setViewportState(target);
+  }, [getViewport, scrollToTopCounter, setViewport]);
 
   const edges: Edge<KeyEdgeData>[] = useMemo(
     () =>
@@ -401,6 +693,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       } else {
         clearSelection();
         clearPendingInsert();
+        setSelectedPhaseRow(null);
       }
     },
     [clearPendingInsert, clearSelection, isSpacePanning, projectPointer, selectLaneRow, sortedLanes]
@@ -431,24 +724,22 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       ref={canvasRef}
       className="relative flex-1 bg-slate-50"
       style={{
-        minHeight: canvasHeight + CANVAS_TOP_PADDING,
-        paddingTop: CANVAS_TOP_PADDING,
+        minHeight: diagramHeight,
         cursor: isSpacePanning ? 'grab' : 'default',
       }}
     >
+      {renderPhaseOverlay()}
       <ReactFlow
         className={`h-full w-full ${isSpacePanning ? 'cursor-grab' : 'cursor-default'}`}
-        style={{ minHeight: canvasHeight }}
+        style={{ minHeight: diagramHeight, zIndex: 1 }}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={edgeOptions}
         panOnDrag={isSpacePanning}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.3}
-        maxZoom={1.5}
+        minZoom={0.01}
+        maxZoom={10}
         panOnScroll
         zoomOnScroll
         zoomActivationKeyCode={null}
@@ -462,7 +753,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         onNodeClick={handleNodeClick}
         onEdgeClick={handleEdgeClick}
         onSelectionChange={handleSelectionChange}
-        onMove={clampViewport}
+        onMove={handleViewportChange}
         edgeUpdaterRadius={16}
       >
         <Background gap={24} size={1} color="#e5e7eb" />

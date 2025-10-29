@@ -39,12 +39,20 @@ export interface Connection {
   label?: string;
 }
 
+export interface PhaseGroup {
+  id: ElementID;
+  title: string;
+  startRow: number;
+  endRow: number;
+}
+
 export interface Diagram {
   id: string;
   title: string;
   lanes: Lane[];
   steps: Step[];
   connections: Connection[];
+  phaseGroups: PhaseGroup[];
   createdAt: string;
   updatedAt: string;
 }
@@ -53,6 +61,7 @@ export interface SelectionState {
   lanes: ElementID[];
   steps: ElementID[];
   connections: ElementID[];
+  phases: ElementID[];
 }
 
 export interface DiagramHistoryEntry {

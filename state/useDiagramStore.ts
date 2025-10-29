@@ -8,6 +8,7 @@ import type {
   DiagramHistoryEntry,
   ElementID,
   Lane,
+  PhaseGroup,
   SelectionState,
   Step,
   StepKind,
@@ -44,6 +45,7 @@ interface DiagramStore {
   canUndo: boolean;
   canRedo: boolean;
   pendingInsert: { laneId: ElementID; row: number } | null;
+  scrollToTopCounter: number;
   setDiagram: (diagram: Diagram, options?: { label?: string; preserveLayout?: boolean }) => void;
   addLane: (title?: string) => void;
   updateLane: (id: ElementID, updates: LaneUpdate) => void;
@@ -85,10 +87,14 @@ interface DiagramStore {
     amount: number,
     options: { scope: 'lane' | 'all'; laneId?: ElementID; direction?: 'down' | 'up' }
   ) => void;
-  setSelection: (selection: SelectionState) => void;
+  setSelection: (selection: Partial<SelectionState>) => void;
   clearSelection: () => void;
   setPendingInsert: (laneId: ElementID, row: number) => void;
   clearPendingInsert: () => void;
+  addPhaseGroup: (startRow: number, endRow: number, title: string) => string;
+  updatePhaseGroup: (id: ElementID, updates: Partial<Omit<PhaseGroup, 'id'>>) => void;
+  removePhaseGroup: (id: ElementID) => void;
+  requestScrollToTop: () => void;
   undo: () => void;
   redo: () => void;
   reset: () => void;
@@ -192,13 +198,14 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
 
   return {
     diagram: createEmptyDiagram(),
-    selection: { lanes: [], steps: [], connections: [] },
+    selection: { lanes: [], steps: [], connections: [], phases: [] },
     auditTrail: [],
     undoStack: [],
     redoStack: [],
     canUndo: false,
     canRedo: false,
     pendingInsert: null,
+    scrollToTopCounter: 0,
 
     setDiagram: (diagram, options) => {
       const { label = 'import diagram', preserveLayout = false } = options ?? {};
@@ -247,6 +254,16 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       if (!preserveLayout) {
         recalcAllLaneLayouts(snapshot);
       }
+      snapshot.phaseGroups = (diagram.phaseGroups ?? []).map((phase) => {
+        const start = Math.max(0, Math.min(Math.floor(phase.startRow), Math.floor(phase.endRow)));
+        const end = Math.max(start, Math.max(Math.floor(phase.startRow), Math.floor(phase.endRow)));
+        return {
+          id: phase.id ?? nanoid(),
+          title: phase.title ?? '',
+          startRow: start,
+          endRow: end,
+        } satisfies PhaseGroup;
+      }).sort((a, b) => a.startRow - b.startRow);
       snapshot.steps = snapshot.steps.map((step) => {
         const original = originalStepMeta.get(step.id);
         if (!original) return step;
@@ -278,7 +295,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         redoStack: [],
         canUndo: false,
         canRedo: false,
-        selection: { lanes: [], steps: [], connections: [] },
+        selection: { lanes: [], steps: [], connections: [], phases: [] },
         pendingInsert: null,
       });
       get().log({ action: label, targetType: 'diagram', targetId: snapshot.id });
@@ -432,7 +449,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       if (createdId) {
         set({
           pendingInsert: { laneId: pending.laneId, row: insertRow + 1 },
-          selection: { lanes: [pending.laneId], steps: [createdId], connections: [] },
+          selection: { lanes: [pending.laneId], steps: [createdId], connections: [], phases: [] },
         });
       }
       return createdId;
@@ -855,6 +872,24 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           });
         });
         sortSteps(draft);
+        draft.phaseGroups.forEach((phase) => {
+          if (direction === 'down') {
+            if (phase.startRow >= row) {
+              phase.startRow += normalized;
+              phase.endRow += normalized;
+            } else if (phase.endRow >= row) {
+              phase.endRow += normalized;
+            }
+          } else {
+            if (phase.startRow >= row) {
+              phase.startRow = Math.max(0, phase.startRow - normalized);
+              phase.endRow = Math.max(phase.startRow, phase.endRow - normalized);
+            } else if (phase.endRow >= row) {
+              phase.endRow = Math.max(phase.startRow, phase.endRow - normalized);
+            }
+          }
+        });
+        draft.phaseGroups.sort((a, b) => a.startRow - b.startRow);
       }, direction === 'down' ? 'shift rows down' : 'shift rows up', {
         action: direction === 'down' ? 'shift_rows_down' : 'shift_rows_up',
         targetType: 'diagram',
@@ -878,18 +913,20 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       const lanes = selection.lanes ?? [];
       const steps = selection.steps ?? [];
       const connections = selection.connections ?? [];
+      const phases = selection.phases ?? [];
       set((state) => ({
         selection: {
           lanes: [...lanes],
           steps: [...steps],
           connections: [...connections],
+          phases: [...phases],
         },
         pendingInsert: steps.length === 0 && connections.length === 0 ? state.pendingInsert : null,
       }));
     },
 
     clearSelection: () => {
-      set({ selection: { lanes: [], steps: [], connections: [] }, pendingInsert: null });
+      set({ selection: { lanes: [], steps: [], connections: [], phases: [] }, pendingInsert: null });
     },
 
     setPendingInsert: (laneId, row) => {
@@ -898,6 +935,49 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
 
     clearPendingInsert: () => {
       set({ pendingInsert: null });
+    },
+    addPhaseGroup: (startRow, endRow, title) => {
+      const normalizedStart = Math.max(0, Math.min(startRow, endRow));
+      const normalizedEnd = Math.max(normalizedStart, Math.max(startRow, endRow));
+      let createdId = '';
+      commit((draft) => {
+        const id = nanoid();
+        draft.phaseGroups.push({
+          id,
+          title,
+          startRow: normalizedStart,
+          endRow: normalizedEnd,
+        });
+        draft.phaseGroups.sort((a, b) => a.startRow - b.startRow);
+        createdId = id;
+      }, 'add phase');
+      return createdId;
+    },
+    updatePhaseGroup: (id, updates) => {
+      commit((draft) => {
+        const target = draft.phaseGroups.find((phase) => phase.id === id);
+        if (!target) return;
+        if (typeof updates.startRow === 'number' || typeof updates.endRow === 'number') {
+          const nextStart = typeof updates.startRow === 'number' ? updates.startRow : target.startRow;
+          const nextEnd = typeof updates.endRow === 'number' ? updates.endRow : target.endRow;
+          const normalizedStart = Math.max(0, Math.min(nextStart, nextEnd));
+          const normalizedEnd = Math.max(normalizedStart, Math.max(nextStart, nextEnd));
+          target.startRow = normalizedStart;
+          target.endRow = normalizedEnd;
+        }
+        if (typeof updates.title === 'string') {
+          target.title = updates.title;
+        }
+        draft.phaseGroups.sort((a, b) => a.startRow - b.startRow);
+      }, 'update phase');
+    },
+    removePhaseGroup: (id) => {
+      commit((draft) => {
+        draft.phaseGroups = draft.phaseGroups.filter((phase) => phase.id !== id);
+      }, 'remove phase');
+    },
+    requestScrollToTop: () => {
+      set((state) => ({ scrollToTopCounter: state.scrollToTopCounter + 1 }));
     },
 
     undo: () => {
@@ -943,7 +1023,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         redoStack: [],
         canUndo: false,
         canRedo: false,
-        selection: { lanes: [], steps: [], connections: [] },
+        selection: { lanes: [], steps: [], connections: [], phases: [] },
       });
       get().log({ action: 'reset', targetType: 'diagram' });
     },

@@ -7,7 +7,7 @@ import { SwimlaneCanvas } from '@/components/canvas/SwimlaneCanvas';
 import { useDiagramStore } from '@/state/useDiagramStore';
 import { MermaidDialog } from '@/components/export/MermaidDialog';
 import { AuditLogDialog } from '@/components/export/AuditLogDialog';
-import { exportDiagramToPng } from '@/lib/export/png';
+import { ImageExportDialog } from '@/components/export/ImageExportDialog';
 import type { StepKind } from '@/lib/diagram/types';
 
 export const SwimlaneEditor = () => {
@@ -23,10 +23,12 @@ export const SwimlaneEditor = () => {
   const canRedo = useDiagramStore((state) => state.canRedo);
   const setSelection = useDiagramStore((state) => state.setSelection);
   const pendingInsert = useDiagramStore((state) => state.pendingInsert);
+  const requestScrollToTop = useDiagramStore((state) => state.requestScrollToTop);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [mermaidOpen, setMermaidOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [status, setStatus] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
   const [lanePanelOpen, setLanePanelOpen] = useState(true);
   const [stepPanelOpen, setStepPanelOpen] = useState(true);
@@ -90,16 +92,6 @@ export const SwimlaneEditor = () => {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [canRedo, canUndo, redo, undo]);
-
-  const handleExportPng = async () => {
-    if (!canvasRef.current) return;
-    try {
-      await exportDiagramToPng(canvasRef.current, `${diagram.title || 'swimlane'}.png`);
-      setStatus({ type: 'info', text: 'PNGをダウンロードしました' });
-    } catch (error) {
-      setStatus({ type: 'error', text: (error as Error).message ?? 'PNG出力に失敗しました' });
-    }
-  };
 
   return (
     <ReactFlowProvider>
@@ -187,11 +179,14 @@ export const SwimlaneEditor = () => {
             <Button type="button" variant="outline" onClick={() => setMermaidOpen(true)}>
               Mermaid入出力
             </Button>
-            <Button type="button" variant="outline" onClick={handleExportPng}>
-              PNGエクスポート
+            <Button type="button" variant="outline" onClick={() => setExportOpen(true)}>
+              図面エクスポート
             </Button>
             <Button type="button" variant="outline" onClick={() => setAuditOpen(true)}>
               監査ログ
+            </Button>
+            <Button type="button" variant="outline" onClick={requestScrollToTop}>
+              レーン最上部へ
             </Button>
             <span className="mx-2 hidden h-6 w-px bg-border md:block" />
             <Button
@@ -237,6 +232,14 @@ export const SwimlaneEditor = () => {
           open={auditOpen}
           onClose={() => setAuditOpen(false)}
           onStatus={(type, text) => setStatus({ type, text })}
+        />
+        <ImageExportDialog
+          open={exportOpen}
+          onClose={() => setExportOpen(false)}
+          canvasRef={canvasRef}
+          filenameBase={`${diagram.title || 'swimlane'}`}
+          onStatus={(type, text) => setStatus({ type, text })}
+          initialFormat="png"
         />
       </div>
     </ReactFlowProvider>

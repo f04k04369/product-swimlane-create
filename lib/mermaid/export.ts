@@ -54,8 +54,13 @@ export const exportDiagramToMermaid = (diagram: Diagram): string => {
     lanes: diagram.lanes,
     steps: diagram.steps,
     connections: diagram.connections,
+    phaseGroups: diagram.phaseGroups ?? [],
   };
   lines.push(`%% swimlane-json:${JSON.stringify(persistedState)}`);
+
+  (diagram.phaseGroups ?? []).forEach((phase) => {
+    lines.push(`%% phase-meta:${JSON.stringify(phase)}`);
+  });
 
   if (diagram.steps.some((step) => step.kind === 'file')) {
     lines.push('classDef file fill:#f0f9ff,stroke:#0ea5e9,color:#0f172a;');
