@@ -21,10 +21,9 @@ import { StepNode } from '@/components/canvas/StepNode';
 import { KeyEdge, type KeyEdgeData } from '@/components/canvas/KeyEdge';
 import { useDiagramStore } from '@/state/useDiagramStore';
 import { computeLaneHeight, deriveLanePositionX, LANE_PADDING, LANE_WIDTH, ROW_HEIGHT, rowIndexFromY } from '@/lib/diagram/layout';
+import { PHASE_GAP_TO_LANE, PHASE_LABEL_MIN_LEFT, PHASE_LABEL_WIDTH } from '@/lib/diagram/constants';
 import type { PhaseGroup } from '@/lib/diagram/types';
 
-const PHASE_LABEL_WIDTH = 56;
-const PHASE_GAP_TO_LANE = 12;
 
 interface PhaseResizeState {
   id: string;
@@ -294,9 +293,9 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
 
   const phaseLabelX = useMemo(() => {
     if (!sortedLanes.length) {
-      return Math.max(16, laneAreaLeft + 8);
+      return Math.max(PHASE_LABEL_MIN_LEFT, laneAreaLeft + 8);
     }
-    return Math.max(12, firstLaneLeft - PHASE_LABEL_WIDTH - PHASE_GAP_TO_LANE);
+    return Math.max(PHASE_LABEL_MIN_LEFT, firstLaneLeft - PHASE_LABEL_WIDTH - PHASE_GAP_TO_LANE);
   }, [firstLaneLeft, laneAreaLeft, sortedLanes.length]);
 
   const phaseGroups = useMemo(() => diagram.phaseGroups ?? [], [diagram.phaseGroups]);

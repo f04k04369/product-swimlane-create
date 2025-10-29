@@ -1,18 +1,43 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+} from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { captureDiagramPreview, exportCroppedDiagramToPng, type DiagramPngCapture } from '@/lib/export/png';
+import {
+  captureDiagramPreview,
+  exportCroppedDiagramToPng,
+  exportDiagramToSvg,
+  type DiagramContentBounds,
+  type DiagramCaptureResult,
+} from '@/lib/export/htmlToImage';
+import { useDiagramStore } from '@/state/useDiagramStore';
+import {
+  computeLaneHeight,
+  deriveLanePositionX,
+  LANE_PADDING,
+  LANE_WIDTH,
+  ROW_HEIGHT,
+} from '@/lib/diagram/layout';
+import { PHASE_GAP_TO_LANE, PHASE_LABEL_MIN_LEFT, PHASE_LABEL_WIDTH } from '@/lib/diagram/constants';
+import type { Diagram } from '@/lib/diagram/types';
 
 const DEFAULT_SELECTION_MARGIN = 32;
 
-interface PngExportDialogProps {
+interface ImageExportDialogProps {
   open: boolean;
   onClose: () => void;
   canvasRef: RefObject<HTMLDivElement>;
-  filename: string;
+  filenameBase: string;
   onStatus?: (type: 'info' | 'error', text: string) => void;
+  initialFormat?: 'png' | 'svg';
 }
 
 interface SelectionRect {
@@ -22,8 +47,56 @@ interface SelectionRect {
   height: number;
 }
 
-export const PngExportDialog = ({ open, onClose, canvasRef, filename, onStatus }: PngExportDialogProps) => {
-  const [capture, setCapture] = useState<DiagramPngCapture | null>(null);
+const computeDiagramContentBounds = (diagram: Diagram): DiagramContentBounds | null => {
+  if (!diagram.lanes.length) {
+    return null;
+  }
+
+  const sortedLanes = [...diagram.lanes].sort((a, b) => a.order - b.order);
+  const firstOrder = sortedLanes[0].order;
+  const lastOrder = sortedLanes[sortedLanes.length - 1].order;
+
+  const laneLeft = Math.max(0, deriveLanePositionX(firstOrder) - LANE_PADDING * 0.5);
+  const laneRight = deriveLanePositionX(lastOrder) + LANE_WIDTH + LANE_PADDING * 0.5;
+
+  const maxLaneHeight = sortedLanes.reduce((height, lane) => {
+    const laneSteps = diagram.steps.filter((step) => step.laneId === lane.id);
+    return Math.max(height, computeLaneHeight(laneSteps));
+  }, LANE_PADDING * 2 + ROW_HEIGHT);
+
+  const stepsBottom = diagram.steps.length
+    ? Math.max(...diagram.steps.map((step) => step.y + step.height))
+    : 0;
+
+  const phaseMaxRow = (diagram.phaseGroups ?? []).reduce((acc, phase) => Math.max(acc, phase.endRow), -1);
+  const phaseBottom = phaseMaxRow >= 0 ? LANE_PADDING + (phaseMaxRow + 1) * ROW_HEIGHT + LANE_PADDING : 0;
+
+  const contentBottom = Math.max(maxLaneHeight, stepsBottom + LANE_PADDING, phaseBottom);
+
+  const phaseLabelLeft = Math.max(
+    PHASE_LABEL_MIN_LEFT,
+    deriveLanePositionX(firstOrder) - PHASE_LABEL_WIDTH - PHASE_GAP_TO_LANE
+  );
+
+  const minX = Math.min(phaseLabelLeft, laneLeft);
+  const maxX = Math.max(laneRight, phaseLabelLeft + PHASE_LABEL_WIDTH);
+
+  return {
+    minX,
+    minY: 0,
+    width: Math.max(0, maxX - minX),
+    height: Math.max(contentBottom, LANE_PADDING * 2 + ROW_HEIGHT),
+  };
+};
+
+export const ImageExportDialog = ({ open, onClose, canvasRef, filenameBase, onStatus, initialFormat = 'png' }: ImageExportDialogProps) => {
+  const resolvedFilenameBase = useMemo(() => {
+    const trimmed = filenameBase.trim();
+    return trimmed.length > 0 ? trimmed : 'swimlane';
+  }, [filenameBase]);
+
+  const diagram = useDiagramStore((state) => state.diagram);
+  const [capture, setCapture] = useState<DiagramCaptureResult<string> | null>(null);
   const [selection, setSelection] = useState<SelectionRect | null>(null);
   const [isPreparing, setIsPreparing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -32,6 +105,8 @@ export const PngExportDialog = ({ open, onClose, canvasRef, filename, onStatus }
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const [previewSize, setPreviewSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const [hasInitializedSelection, setHasInitializedSelection] = useState(false);
+  const [format, setFormat] = useState<'png' | 'svg'>(initialFormat);
+  const diagramBounds = useMemo(() => computeDiagramContentBounds(diagram), [diagram]);
 
   useEffect(() => {
     if (!open) {
@@ -41,6 +116,12 @@ export const PngExportDialog = ({ open, onClose, canvasRef, filename, onStatus }
       setHasInitializedSelection(false);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setFormat(initialFormat);
+    }
+  }, [open, initialFormat]);
 
   useEffect(() => {
     if (!open) return;
@@ -57,14 +138,14 @@ export const PngExportDialog = ({ open, onClose, canvasRef, filename, onStatus }
     setSelection(null);
     setHasInitializedSelection(false);
 
-    captureDiagramPreview(element)
+    captureDiagramPreview(element, { contentBoundsOverride: diagramBounds })
       .then((result) => {
         if (cancelled) return;
         setCapture(result);
       })
       .catch((err) => {
         if (cancelled) return;
-        const message = (err as Error).message ?? 'PNGプレビューの生成に失敗しました';
+        const message = (err as Error).message ?? 'プレビューの生成に失敗しました';
         setError(message);
         onStatus?.('error', message);
       })
@@ -76,7 +157,7 @@ export const PngExportDialog = ({ open, onClose, canvasRef, filename, onStatus }
     return () => {
       cancelled = true;
     };
-  }, [open, canvasRef, onStatus]);
+  }, [open, canvasRef, onStatus, diagramBounds]);
 
   useEffect(() => {
     if (!open) return;
@@ -213,6 +294,57 @@ export const PngExportDialog = ({ open, onClose, canvasRef, filename, onStatus }
     };
   }, [capture, selection, previewSize]);
 
+  const computeExportBounds = useCallback(() => {
+    if (!capture || !selection || previewSize.width === 0 || previewSize.height === 0) {
+      return null;
+    }
+
+    const scaleX = capture.exportWidth / previewSize.width;
+    const scaleY = capture.exportHeight / previewSize.height;
+
+    const rawSelection = {
+      x: selection.x * scaleX,
+      y: selection.y * scaleY,
+      width: selection.width * scaleX,
+      height: selection.height * scaleY,
+    };
+
+    const exportedBounds = capture.contentBounds ?? {
+      minX: 0,
+      minY: 0,
+      width: capture.exportWidth,
+      height: capture.exportHeight,
+    };
+
+    const normalizedX = Math.max(0, Math.min(rawSelection.x - exportedBounds.minX, exportedBounds.width));
+    const normalizedY = Math.max(0, Math.min(rawSelection.y - exportedBounds.minY, exportedBounds.height));
+    const maxWidth = Math.max(1, exportedBounds.width - normalizedX);
+    const maxHeight = Math.max(1, exportedBounds.height - normalizedY);
+
+    const exportSelection = {
+      x: exportedBounds.minX + normalizedX,
+      y: exportedBounds.minY + normalizedY,
+      width: Math.max(1, Math.min(rawSelection.width, maxWidth)),
+      height: Math.max(1, Math.min(rawSelection.height, maxHeight)),
+    };
+
+    const baseBounds = capture.baseContentBounds ?? diagramBounds ?? null;
+    let baseOverride: DiagramContentBounds | null = null;
+
+    if (baseBounds) {
+      const baseMaxWidth = Math.max(1, baseBounds.width - normalizedX);
+      const baseMaxHeight = Math.max(1, baseBounds.height - normalizedY);
+      baseOverride = {
+        minX: baseBounds.minX + normalizedX,
+        minY: baseBounds.minY + normalizedY,
+        width: Math.max(1, Math.min(exportSelection.width, baseMaxWidth)),
+        height: Math.max(1, Math.min(exportSelection.height, baseMaxHeight)),
+      };
+    }
+
+    return { exportSelection, baseOverride };
+  }, [capture, selection, previewSize, diagramBounds]);
+
   const handleExport = async () => {
     if (!capture) return;
     if (!selection || selection.width < 4 || selection.height < 4 || previewSize.width === 0 || previewSize.height === 0) {
@@ -222,24 +354,36 @@ export const PngExportDialog = ({ open, onClose, canvasRef, filename, onStatus }
       return;
     }
 
+    const bounds = computeExportBounds();
+    if (!bounds) {
+      const message = '選択範囲の計算に失敗しました';
+      setError(message);
+      onStatus?.('error', message);
+      return;
+    }
+
     setError(null);
     setIsExporting(true);
 
     try {
-      const scaleX = capture.exportWidth / previewSize.width;
-      const scaleY = capture.exportHeight / previewSize.height;
-      const selectionForExport = {
-        x: selection.x * scaleX,
-        y: selection.y * scaleY,
-        width: selection.width * scaleX,
-        height: selection.height * scaleY,
-      };
-
-      await exportCroppedDiagramToPng(capture, selectionForExport, filename);
-      onStatus?.('info', 'PNGをダウンロードしました');
+      if (format === 'png') {
+        await exportCroppedDiagramToPng(capture, bounds.exportSelection, `${resolvedFilenameBase}.png`);
+        onStatus?.('info', 'PNGをダウンロードしました');
+      } else {
+        const svgName = (() => {
+          return `${resolvedFilenameBase.replace(/\.[^/.]+$/, '')}.svg`;
+        })();
+        if (!canvasRef.current) {
+          throw new Error('エクスポート対象のキャンバスが見つかりません');
+        }
+        await exportDiagramToSvg(canvasRef.current, svgName, {
+          contentBoundsOverride: bounds.baseOverride ?? diagramBounds ?? null,
+        });
+        onStatus?.('info', 'SVGをダウンロードしました');
+      }
       onClose();
     } catch (err) {
-      const message = (err as Error).message ?? 'PNG出力に失敗しました';
+      const message = (err as Error).message ?? (format === 'png' ? 'PNG出力に失敗しました' : 'SVG出力に失敗しました');
       setError(message);
       onStatus?.('error', message);
     } finally {
@@ -248,15 +392,39 @@ export const PngExportDialog = ({ open, onClose, canvasRef, filename, onStatus }
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="PNGエクスポート" widthClassName="w-full max-w-5xl">
+    <Dialog open={open} onClose={onClose} title="図面エクスポート" widthClassName="w-full max-w-5xl">
       <div className="space-y-5">
         <p className="text-sm text-slate-600">
-          モーダル上のプレビューで出力したい範囲をドラッグして選択してください。選択範囲のみPNGとしてダウンロードします。
+          モーダル上のプレビューで出力したい範囲をドラッグして選択してください。選択範囲のみPNGまたはSVGとしてダウンロードできます。
         </p>
+
+        <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border bg-slate-50 px-4 py-3 text-xs text-slate-600">
+          <span className="font-semibold text-slate-700">出力形式</span>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="export-format"
+              value="png"
+              checked={format === 'png'}
+              onChange={() => setFormat('png')}
+            />
+            PNG（ラスタ画像）
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="export-format"
+              value="svg"
+              checked={format === 'svg'}
+              onChange={() => setFormat('svg')}
+            />
+            SVG（ベクター）
+          </label>
+        </div>
 
         {isPreparing && (
           <div className="flex h-72 items-center justify-center rounded-lg border border-dashed border-border bg-slate-50 text-sm text-slate-500">
-            PNGプレビューを生成しています…
+            プレビューを生成しています…
           </div>
         )}
 
@@ -284,7 +452,7 @@ export const PngExportDialog = ({ open, onClose, canvasRef, filename, onStatus }
                 onPointerUp={handlePointerUp}
               >
                 <img
-                  src={capture.dataUrl}
+                  src={capture.data}
                   alt="Swimlane preview"
                   className="block h-auto max-h-[60vh] max-w-full rounded-lg shadow-lg"
                 />
@@ -353,7 +521,7 @@ export const PngExportDialog = ({ open, onClose, canvasRef, filename, onStatus }
             onClick={handleExport}
             disabled={isPreparing || isExporting || !capture}
           >
-            {isExporting ? '出力中…' : '選択範囲をPNG出力'}
+            {isExporting ? '出力中…' : `選択範囲を${format.toUpperCase()}出力`}
           </Button>
         </div>
       </div>

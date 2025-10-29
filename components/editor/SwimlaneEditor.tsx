@@ -7,7 +7,7 @@ import { SwimlaneCanvas } from '@/components/canvas/SwimlaneCanvas';
 import { useDiagramStore } from '@/state/useDiagramStore';
 import { MermaidDialog } from '@/components/export/MermaidDialog';
 import { AuditLogDialog } from '@/components/export/AuditLogDialog';
-import { PngExportDialog } from '@/components/export/PngExportDialog';
+import { ImageExportDialog } from '@/components/export/ImageExportDialog';
 import type { StepKind } from '@/lib/diagram/types';
 
 export const SwimlaneEditor = () => {
@@ -28,7 +28,7 @@ export const SwimlaneEditor = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [mermaidOpen, setMermaidOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
-  const [pngOpen, setPngOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [status, setStatus] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
   const [lanePanelOpen, setLanePanelOpen] = useState(true);
   const [stepPanelOpen, setStepPanelOpen] = useState(true);
@@ -179,8 +179,8 @@ export const SwimlaneEditor = () => {
             <Button type="button" variant="outline" onClick={() => setMermaidOpen(true)}>
               Mermaid入出力
             </Button>
-            <Button type="button" variant="outline" onClick={() => setPngOpen(true)}>
-              PNGエクスポート
+            <Button type="button" variant="outline" onClick={() => setExportOpen(true)}>
+              図面エクスポート
             </Button>
             <Button type="button" variant="outline" onClick={() => setAuditOpen(true)}>
               監査ログ
@@ -233,12 +233,13 @@ export const SwimlaneEditor = () => {
           onClose={() => setAuditOpen(false)}
           onStatus={(type, text) => setStatus({ type, text })}
         />
-        <PngExportDialog
-          open={pngOpen}
-          onClose={() => setPngOpen(false)}
+        <ImageExportDialog
+          open={exportOpen}
+          onClose={() => setExportOpen(false)}
           canvasRef={canvasRef}
-          filename={`${diagram.title || 'swimlane'}.png`}
+          filenameBase={`${diagram.title || 'swimlane'}`}
           onStatus={(type, text) => setStatus({ type, text })}
+          initialFormat="png"
         />
       </div>
     </ReactFlowProvider>

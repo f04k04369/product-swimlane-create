@@ -1,4 +1,4 @@
-import { toPng } from 'html-to-image';
+import { toPng, toSvg } from 'html-to-image';
 
 const LANE_BOUNDS_SELECTORS = [
   '.react-flow__node',
@@ -26,12 +26,18 @@ export interface DiagramContentBounds {
   height: number;
 }
 
-export interface DiagramPngCapture {
-  dataUrl: string;
+export interface DiagramCaptureOptions {
+  pixelRatio?: number;
+  contentBoundsOverride?: DiagramContentBounds | null;
+}
+
+export interface DiagramCaptureResult<T = string> {
+  data: T;
   exportWidth: number;
   exportHeight: number;
   pixelRatio: number;
   contentBounds: DiagramContentBounds | null;
+  baseContentBounds: DiagramContentBounds | null;
 }
 
 export interface DiagramSelectionArea {
@@ -142,10 +148,13 @@ const loadImage = (dataUrl: string) =>
     image.src = dataUrl;
   });
 
-const captureDiagram = async (
+type DiagramRenderer<T> = (element: HTMLElement, options: { pixelRatio: number }) => Promise<T>;
+
+const captureDiagram = async <T>(
   element: HTMLElement,
-  { pixelRatio = DEFAULT_PIXEL_RATIO }: { pixelRatio?: number } = {}
-): Promise<DiagramPngCapture> => {
+  renderer: DiagramRenderer<T>,
+  { pixelRatio = DEFAULT_PIXEL_RATIO, contentBoundsOverride = null }: DiagramCaptureOptions = {}
+): Promise<DiagramCaptureResult<T>> => {
   const viewport = element.querySelector<HTMLElement>('.react-flow__viewport');
   const reactFlowElement = element.querySelector<HTMLElement>('.react-flow');
 
@@ -209,30 +218,31 @@ const captureDiagram = async (
     panelRestorers.forEach((restore) => restore());
   });
 
-  const laneBounds = collectDiagramBounds(element);
-  const contentBounds = collectDiagramBounds(element, CONTENT_BOUNDS_SELECTORS) ?? laneBounds;
-  const horizontalPadding = 120;
-  const verticalPadding = 120;
+  const laneBoundsFromDom = collectDiagramBounds(element);
+  const contentBoundsFromDom = collectDiagramBounds(element, CONTENT_BOUNDS_SELECTORS) ?? laneBoundsFromDom;
+  const baseBounds = contentBoundsOverride ?? contentBoundsFromDom;
+  const horizontalPadding = 48;
+  const verticalPadding = 48;
   let exportWidth = element.clientWidth;
   let exportHeight = element.clientHeight;
   let translatedContentBounds: DiagramContentBounds | null = null;
   const phaseOverlays = Array.from(element.querySelectorAll<HTMLElement>('[data-phase-overlay="true"]'));
 
-  if (viewport && laneBounds && contentBounds) {
+  if (viewport && baseBounds) {
     const computedTransform = window.getComputedStyle(viewport).transform;
     const { translateX, translateY, scale } = parseViewportTransform(computedTransform);
-    const contentWidth = Math.max(1, Math.ceil(contentBounds.width));
+    const contentWidth = Math.max(1, Math.ceil(baseBounds.width));
     const targetCenterX = (contentWidth + horizontalPadding * 2) / 2;
-    const currentCenterX = contentBounds.minX + contentBounds.width / 2;
+    const currentCenterX = baseBounds.minX + baseBounds.width / 2;
     const shiftX = targetCenterX - currentCenterX;
-    const shiftY = verticalPadding - contentBounds.minY;
+    const shiftY = verticalPadding - baseBounds.minY;
     const originalTransform = viewport.style.transform;
     const originalTransition = viewport.style.transition;
 
     viewport.style.transition = 'none';
     viewport.style.transform = `translate(${translateX + shiftX}px, ${translateY + shiftY}px) scale(${scale})`;
 
-    const overlayRestorers = phaseOverlays.map((overlay) => {
+    const phaseOverlayRestorers = phaseOverlays.map((overlay) => {
       const previousTransform = overlay.style.transform;
       const overlayComputed = window.getComputedStyle(overlay).transform;
       const { translateX: overlayX, translateY: overlayY, scale: overlayScale } = parseViewportTransform(overlayComputed);
@@ -245,20 +255,20 @@ const captureDiagram = async (
     cleanup.push(() => {
       viewport.style.transform = originalTransform;
       viewport.style.transition = originalTransition;
-      overlayRestorers.forEach((restore) => restore());
+      phaseOverlayRestorers.forEach((restore) => restore());
     });
 
     translatedContentBounds = {
       minX: horizontalPadding,
       minY: verticalPadding,
-      width: contentBounds.width,
-      height: contentBounds.height,
+      width: baseBounds.width,
+      height: baseBounds.height,
     };
   }
 
-  if (contentBounds) {
-    const contentWidth = Math.max(1, Math.ceil(contentBounds.width));
-    const contentHeight = Math.max(1, Math.ceil(contentBounds.height));
+  if (baseBounds) {
+    const contentWidth = Math.max(1, Math.ceil(baseBounds.width));
+    const contentHeight = Math.max(1, Math.ceil(baseBounds.height));
     exportWidth = contentWidth + horizontalPadding * 2;
     exportHeight = contentHeight + verticalPadding * 2;
 
@@ -291,14 +301,10 @@ const captureDiagram = async (
   await waitForNextFrame();
   await wait(50);
 
-  let dataUrl: string;
+  let data: T;
 
   try {
-    dataUrl = await toPng(element, {
-      pixelRatio,
-      backgroundColor: '#ffffff',
-      cacheBust: true,
-    });
+    data = await renderer(element, { pixelRatio });
   } finally {
     cleanup.forEach((restore) => {
       try {
@@ -315,31 +321,42 @@ const captureDiagram = async (
     exportHeight = Math.max(1, Math.round(rect.height));
   }
 
-  if (!translatedContentBounds && contentBounds) {
+  if (!translatedContentBounds && baseBounds) {
     translatedContentBounds = {
-      minX: contentBounds.minX,
-      minY: contentBounds.minY,
-      width: contentBounds.width,
-      height: contentBounds.height,
+      minX: baseBounds.minX,
+      minY: baseBounds.minY,
+      width: baseBounds.width,
+      height: baseBounds.height,
     };
   }
 
   return {
-    dataUrl,
+    data,
     exportWidth,
     exportHeight,
     pixelRatio,
-    contentBounds: translatedContentBounds,
+    contentBounds: translatedContentBounds ?? baseBounds ?? null,
+    baseContentBounds: baseBounds ? { ...baseBounds } : null,
   };
 };
 
 export const captureDiagramPreview = async (
   element: HTMLElement,
-  options?: { pixelRatio?: number }
-): Promise<DiagramPngCapture> => captureDiagram(element, options);
+  options?: DiagramCaptureOptions
+): Promise<DiagramCaptureResult<string>> =>
+  captureDiagram(
+    element,
+    (target, { pixelRatio }) =>
+      toPng(target, {
+        pixelRatio,
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+      }),
+    options
+  );
 
 export const cropCapturedDiagram = async (
-  capture: DiagramPngCapture,
+  capture: DiagramCaptureResult<string>,
   selection: DiagramSelectionArea
 ): Promise<string> => {
   const clampedX = Math.max(0, Math.min(selection.x, capture.exportWidth));
@@ -353,7 +370,7 @@ export const cropCapturedDiagram = async (
     throw new Error('有効な選択範囲を指定してください');
   }
 
-  const image = await loadImage(capture.dataUrl);
+  const image = await loadImage(capture.data);
   const canvas = document.createElement('canvas');
   const pixelWidth = Math.max(1, Math.round(width * capture.pixelRatio));
   const pixelHeight = Math.max(1, Math.round(height * capture.pixelRatio));
@@ -376,7 +393,7 @@ export const cropCapturedDiagram = async (
 };
 
 export const exportCroppedDiagramToPng = async (
-  capture: DiagramPngCapture,
+  capture: DiagramCaptureResult<string>,
   selection: DiagramSelectionArea,
   filename: string
 ) => {
@@ -384,11 +401,27 @@ export const exportCroppedDiagramToPng = async (
   downloadPngDataUrl(croppedDataUrl, filename);
 };
 
-export const exportDiagramToPng = async (element: HTMLElement, filename = 'swimlane.png') => {
-  const capture = await captureDiagram(element, { pixelRatio: DEFAULT_PIXEL_RATIO });
-  const bounds = capture.contentBounds;
+export const exportDiagramToPng = async (
+  element: HTMLElement,
+  filename = 'swimlane.png',
+  options?: DiagramCaptureOptions
+) => {
+  const capture = await captureDiagram(
+    element,
+    (target, { pixelRatio }) =>
+      toPng(target, {
+        pixelRatio,
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+      }),
+    {
+      pixelRatio: options?.pixelRatio ?? DEFAULT_PIXEL_RATIO,
+      contentBoundsOverride: options?.contentBoundsOverride ?? null,
+    }
+  );
+  const bounds = capture.contentBounds ?? options?.contentBoundsOverride ?? null;
   if (!bounds) {
-    downloadPngDataUrl(capture.dataUrl, filename);
+    downloadPngDataUrl(capture.data, filename);
     return;
   }
 
@@ -405,4 +438,40 @@ export const exportDiagramToPng = async (element: HTMLElement, filename = 'swiml
   };
 
   await exportCroppedDiagramToPng(capture, selection, filename);
+};
+
+export const exportDiagramToSvg = async (
+  element: HTMLElement,
+  filename = 'swimlane.svg',
+  options?: DiagramCaptureOptions
+) => {
+  const capture = await captureDiagram(
+    element,
+    (target) => toSvg(target, { cacheBust: true }),
+    {
+      pixelRatio: options?.pixelRatio ?? 1,
+      contentBoundsOverride: options?.contentBoundsOverride ?? null,
+    }
+  );
+  const svgContent = capture.data;
+  const trimmed = svgContent.trim();
+  const downloadName = filename.toLowerCase().endsWith('.svg') ? filename : `${filename}.svg`;
+  let url = trimmed;
+  let needsRevoke = false;
+
+  if (!trimmed.startsWith('data:image/svg+xml')) {
+    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+    url = URL.createObjectURL(blob);
+    needsRevoke = true;
+  }
+
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = downloadName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  if (needsRevoke) {
+    URL.revokeObjectURL(url);
+  }
 };
