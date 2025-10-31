@@ -88,12 +88,15 @@ export const LaneNode = ({ data }: NodeProps<LaneNodeData>) => {
       {true && (
         <div
           role="presentation"
-          className="absolute top-0 bottom-0 right-[-6px] z-20 w-2 cursor-ew-resize rounded-sm bg-amber-400/70 hover:bg-amber-500"
+          className="absolute top-0 bottom-0 right-[-8px] w-4 cursor-ew-resize rounded-sm bg-amber-400/80 hover:bg-amber-500 transition-colors"
+          style={{ zIndex: 1000, pointerEvents: 'all' }}
           onPointerDown={(e) => {
             e.stopPropagation();
+            e.preventDefault();
             refWidth.current = width;
             const startX = e.clientX;
             const handleMove = (me: PointerEvent) => {
+              me.preventDefault();
               const dx = me.clientX - startX;
               const next = Math.max(200, Math.round(refWidth.current + dx));
               updateLane(id, { width: next });
