@@ -14,14 +14,29 @@ const clampLaneIndex = (lanes: Lane[], index: number) => {
   return index;
 };
 
-export const columnLeft = (order: number) => LANE_PADDING + order * (LANE_WIDTH + LANE_GAP);
+const sortedByOrder = (lanes: Lane[]) => lanes.slice().sort((a, b) => a.order - b.order);
 
-export const laneCenter = (order: number) => columnLeft(order) + LANE_WIDTH / 2;
+const laneWidthAt = (lanes: Lane[], order: number) => {
+  const lane = lanes.find((l) => l.order === order);
+  return lane?.width ?? LANE_WIDTH;
+};
 
-export const deriveLanePositionX = (order: number) => columnLeft(order);
+export const columnLeft = (lanes: Lane[], order: number) => {
+  const ordered = sortedByOrder(lanes);
+  let left = LANE_PADDING;
+  for (const lane of ordered) {
+    if (lane.order >= order) break;
+    left += (lane.width ?? LANE_WIDTH) + LANE_GAP;
+  }
+  return left;
+};
 
-export const deriveStepX = (order: number, stepWidth: number) =>
-  columnLeft(order) + Math.max(0, (LANE_WIDTH - stepWidth) / 2);
+export const laneCenter = (lanes: Lane[], order: number) => columnLeft(lanes, order) + laneWidthAt(lanes, order) / 2;
+
+export const deriveLanePositionX = (lanes: Lane[], order: number) => columnLeft(lanes, order);
+
+export const deriveStepX = (lanes: Lane[], order: number, stepWidth: number) =>
+  columnLeft(lanes, order) + Math.max(0, (laneWidthAt(lanes, order) - stepWidth) / 2);
 
 export const rowIndexFromY = (value: number, stepHeight: number) => {
   const adjusted = value - LANE_PADDING + stepHeight / 2;
@@ -34,10 +49,18 @@ export const yForRow = (row: number, stepHeight: number) =>
 
 export const resolveLaneIndex = (lanes: Lane[], xCenter: number) => {
   if (!lanes.length) return 0;
-  const base = laneCenter(0);
-  const distance = xCenter - base;
-  const approx = Math.round(distance / (LANE_WIDTH + LANE_GAP));
-  return clampLaneIndex(lanes, approx);
+  const ordered = sortedByOrder(lanes);
+  let closestIndex = 0;
+  let closestDist = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < ordered.length; i += 1) {
+    const center = laneCenter(lanes, ordered[i].order);
+    const dist = Math.abs(xCenter - center);
+    if (dist < closestDist) {
+      closestDist = dist;
+      closestIndex = i;
+    }
+  }
+  return clampLaneIndex(ordered, closestIndex);
 };
 
 export const computeLaneHeight = (laneSteps: Step[]): number => {

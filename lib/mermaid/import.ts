@@ -132,7 +132,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       const kind: StepKind = isStepKind(rawKind) ? rawKind : 'process';
       const userX = typeof stepMeta.userX === 'number' ? stepMeta.userX : undefined;
       const userY = typeof stepMeta.userY === 'number' ? stepMeta.userY : undefined;
-      const x = typeof userX === 'number' ? userX : typeof stepMeta.x === 'number' ? stepMeta.x : deriveStepX(lane.order, width);
+      const x = typeof userX === 'number' ? userX : typeof stepMeta.x === 'number' ? stepMeta.x : deriveStepX(lanes, lane.order, width);
       const y =
         typeof userY === 'number'
           ? userY
@@ -274,7 +274,7 @@ const sanitizeStep = (step: Step, lanes: Lane[], index: number): Step => {
   const width = typeof step.width === 'number' ? step.width : 240;
   const height = typeof step.height === 'number' ? step.height : 120;
   const order = typeof step.order === 'number' ? step.order : index;
-  const x = typeof step.x === 'number' ? step.x : deriveStepX(lanes.find((lane) => lane.id === laneId)?.order ?? 0, width);
+  const x = typeof step.x === 'number' ? step.x : deriveStepX(lanes, lanes.find((lane) => lane.id === laneId)?.order ?? 0, width);
   const y = typeof step.y === 'number' ? step.y : yForRow(order, height);
   return {
     id: typeof step.id === 'string' ? step.id : nanoid(),

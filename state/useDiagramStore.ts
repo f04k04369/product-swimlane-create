@@ -29,11 +29,19 @@ const KIND_DIMENSIONS: Record<StepKind, { width: number; height: number }> = {
 };
 
 const KIND_COLORS: Record<StepKind, string> = {
-  process: '#1f2937',
-  decision: '#9333ea',
-  start: '#16a34a',
-  end: '#dc2626',
-  file: '#0ea5e9',
+  process: '#000000',
+  decision: '#000000',
+  start: '#000000',
+  end: '#000000',
+  file: '#000000',
+};
+
+const KIND_FILL_COLORS: Record<StepKind, string> = {
+  process: '#e0ebff',
+  decision: '#e4c9fd',
+  start: '#c2ffd8',
+  end: '#ffd1d1',
+  file: '#fff4ad',
 };
 
 interface DiagramStore {
@@ -132,7 +140,7 @@ const layoutLaneSteps = (
 
       step.order = row;
       step.laneId = lane.id;
-      step.x = deriveStepX(lane.order, step.width);
+      step.x = deriveStepX(diagram.lanes, lane.order, step.width);
       step.y = yForRow(row, step.height);
     });
 };
@@ -238,12 +246,13 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           width,
           height,
           kind: step.kind ?? 'process',
-          color: step.color ?? '#1f2937',
+          color: step.color ?? '#000000',
+          fillColor: step.fillColor ?? KIND_FILL_COLORS[(step.kind ?? 'process') as StepKind] ?? '#e0ebff',
           x:
             preserveLayout && typeof step.x === 'number'
               ? step.x
               : targetLane
-              ? deriveStepX(targetLane.order, width)
+              ? deriveStepX(snapshot.lanes, targetLane.order, width)
               : step.x,
           y:
             preserveLayout && typeof step.y === 'number'
@@ -310,6 +319,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           description: '',
           order,
           color: getLaneColor(order),
+          width: 320,
         });
         draft.lanes = draft.lanes.map((lane, index) => ({
           ...lane,
@@ -426,8 +436,9 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           width: dimensions.width,
           height: dimensions.height,
           color: KIND_COLORS[kind],
+          fillColor: KIND_FILL_COLORS[kind],
           kind,
-          x: deriveStepX(lane.order, dimensions.width),
+          x: deriveStepX(draft.lanes, lane.order, dimensions.width),
           y: yForRow(insertRow, dimensions.height),
         };
         draft.steps.push(newStep);
@@ -435,7 +446,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         draft.steps
           .filter((step) => step.laneId === lane.id)
           .forEach((step) => {
-            step.x = deriveStepX(lane.order, step.width);
+            step.x = deriveStepX(draft.lanes, lane.order, step.width);
             step.y = yForRow(step.order, step.height);
           });
 
@@ -615,6 +626,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         step.width = dimensions.width;
         step.height = dimensions.height;
         step.color = KIND_COLORS[kind];
+        step.fillColor = KIND_FILL_COLORS[kind];
         layoutLaneSteps(draft, step.laneId);
         sortSteps(draft);
       }, 'change step kind', {
@@ -867,7 +879,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           }
 
           laneSteps.forEach((step) => {
-            step.x = deriveStepX(lane.order, step.width);
+            step.x = deriveStepX(draft.lanes, lane.order, step.width);
             step.y = yForRow(step.order, step.height);
           });
         });

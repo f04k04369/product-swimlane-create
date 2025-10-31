@@ -56,8 +56,9 @@ const computeDiagramContentBounds = (diagram: Diagram): DiagramContentBounds | n
   const firstOrder = sortedLanes[0].order;
   const lastOrder = sortedLanes[sortedLanes.length - 1].order;
 
-  const laneLeft = Math.max(0, deriveLanePositionX(firstOrder) - LANE_PADDING * 0.5);
-  const laneRight = deriveLanePositionX(lastOrder) + LANE_WIDTH + LANE_PADDING * 0.5;
+  const laneLeft = Math.max(0, deriveLanePositionX(sortedLanes, firstOrder) - LANE_PADDING * 0.5);
+  const lastLane = sortedLanes.at(-1);
+  const laneRight = deriveLanePositionX(sortedLanes, lastOrder) + (lastLane?.width ?? LANE_WIDTH) + LANE_PADDING * 0.5;
 
   const maxLaneHeight = sortedLanes.reduce((height, lane) => {
     const laneSteps = diagram.steps.filter((step) => step.laneId === lane.id);
@@ -75,7 +76,7 @@ const computeDiagramContentBounds = (diagram: Diagram): DiagramContentBounds | n
 
   const phaseLabelLeft = Math.max(
     PHASE_LABEL_MIN_LEFT,
-    deriveLanePositionX(firstOrder) - PHASE_LABEL_WIDTH - PHASE_GAP_TO_LANE
+    deriveLanePositionX(sortedLanes, firstOrder) - PHASE_LABEL_WIDTH - PHASE_GAP_TO_LANE
   );
 
   const minX = Math.min(phaseLabelLeft, laneLeft);

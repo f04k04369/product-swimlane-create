@@ -1,5 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { NodeProps } from 'reactflow';
+import { useCallback, useRef } from 'react';
+import { useDiagramStore } from '@/state/useDiagramStore';
 
 import { getContrastingTextColor, hexToRgb, mixRgb, rgbToCss, rgbaToCss } from '@/components/canvas/laneColors';
 
@@ -9,6 +11,7 @@ interface LaneNodeData {
   color: string;
   height: number;
   width: number;
+  isSelected?: boolean;
   pendingRow: number | null;
   rowHeight: number;
   lanePadding: number;
@@ -16,7 +19,9 @@ interface LaneNodeData {
 }
 
 export const LaneNode = ({ data }: NodeProps<LaneNodeData>) => {
-  const { id, title, color, height, width, pendingRow, rowHeight, lanePadding, onRowHandleClick } = data;
+  const { id, title, color, height, width, isSelected, pendingRow, rowHeight, lanePadding, onRowHandleClick } = data;
+  const updateLane = useDiagramStore((state) => state.updateLane);
+  const refWidth = useRef(width);
   const highlightTop = pendingRow !== null ? lanePadding + pendingRow * rowHeight : null;
   const rowAreaHeight = Math.max(0, height - lanePadding * 2);
   const rowCount = Math.max(1, Math.round(rowAreaHeight / rowHeight));
@@ -80,6 +85,29 @@ export const LaneNode = ({ data }: NodeProps<LaneNodeData>) => {
         <span data-inline-header-text style={{ color: headerTextColor }}>{title}</span>
       </div>
       <div className="flex-1" />
+      {true && (
+        <div
+          role="presentation"
+          className="absolute top-0 bottom-0 right-[-6px] z-20 w-2 cursor-ew-resize rounded-sm bg-amber-400/70 hover:bg-amber-500"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            refWidth.current = width;
+            const startX = e.clientX;
+            const handleMove = (me: PointerEvent) => {
+              const dx = me.clientX - startX;
+              const next = Math.max(200, Math.round(refWidth.current + dx));
+              updateLane(id, { width: next });
+            };
+            const handleUp = () => {
+              window.removeEventListener('pointermove', handleMove);
+              window.removeEventListener('pointerup', handleUp);
+            };
+            window.addEventListener('pointermove', handleMove);
+            window.addEventListener('pointerup', handleUp);
+          }}
+          aria-label={`${title} の幅を変更`}
+        />
+      )}
     </div>
   );
 };

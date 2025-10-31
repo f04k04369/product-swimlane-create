@@ -528,12 +528,21 @@ const StepPanelInner = () => {
           </div>
         </div>
         <div>
-          <label className="text-xs font-medium text-slate-500">カラー</label>
+          <label className="text-xs font-medium text-slate-500">テキストカラー</label>
           <input
             className={`${inputStyles} h-10 cursor-pointer`}
             type="color"
             value={selectedStep.color}
             onChange={(event) => updateStep(selectedStep.id, { color: event.target.value })}
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-500">背景色</label>
+          <input
+            className={`${inputStyles} h-10 cursor-pointer`}
+            type="color"
+            value={selectedStep.fillColor ?? '#e0ebff'}
+            onChange={(event) => updateStep(selectedStep.id, { fillColor: event.target.value })}
           />
         </div>
       </div>
