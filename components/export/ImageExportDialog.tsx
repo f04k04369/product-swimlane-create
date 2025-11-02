@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from 'react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import {
@@ -452,10 +453,13 @@ export const ImageExportDialog = ({ open, onClose, canvasRef, filenameBase, onSt
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
               >
-                <img
+                <Image
                   src={capture.data}
                   alt="Swimlane preview"
+                  width={capture.exportWidth}
+                  height={capture.exportHeight}
                   className="block h-auto max-h-[60vh] max-w-full rounded-lg shadow-lg"
+                  unoptimized
                 />
                 {selection && previewSize.width > 0 && previewSize.height > 0 && (
                   <>

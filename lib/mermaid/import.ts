@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid/non-secure';
-import { deriveStepX, rowIndexFromY, yForRow } from '@/lib/diagram/layout';
+import { deriveStepX, LANE_WIDTH, rowIndexFromY, yForRow } from '@/lib/diagram/layout';
 import type { Connection, Diagram, Lane, MarkerKind, PhaseGroup, Step, StepKind } from '@/lib/diagram/types';
 
 class MermaidParseError extends Error {}
@@ -99,6 +99,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
     const laneTitle = laneMeta.title ?? laneTitleRaw;
     const laneDescription = laneMeta.description ?? '';
     const laneColor = laneMeta.color ?? '#0ea5e9';
+    const laneWidth = typeof laneMeta.width === 'number' ? laneMeta.width : LANE_WIDTH;
 
     const lane: Lane = {
       id: laneId,
@@ -106,6 +107,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       description: laneDescription,
       order: laneOrder,
       color: laneColor,
+      width: laneWidth,
     };
     lanes.push(lane);
 
@@ -263,6 +265,7 @@ const sanitizeLane = (lane: Lane, index: number): Lane => ({
   description: typeof lane.description === 'string' ? lane.description : '',
   order: typeof lane.order === 'number' ? lane.order : index,
   color: typeof lane.color === 'string' ? lane.color : '#0ea5e9',
+  width: typeof lane.width === 'number' ? lane.width : LANE_WIDTH,
 });
 
 const sanitizeStep = (step: Step, lanes: Lane[], index: number): Step => {

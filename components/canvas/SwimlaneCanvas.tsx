@@ -70,7 +70,6 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
   const { project, setViewport, getViewport } = useReactFlow();
   const [phaseResize, setPhaseResize] = useState<PhaseResizeState | null>(null);
   const [selectedPhaseRow, setSelectedPhaseRow] = useState<number | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
 
   useEffect(() => {
     const container = canvasRef.current;
@@ -170,7 +169,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         draggable: false,
         zIndex: 0,
       })),
-    [handleLaneRowSelect, laneHeights, minimumHeight, pendingInsert, sortedLanes]
+    [handleLaneRowSelect, laneHeights, minimumHeight, pendingInsert, sortedLanes, selection.lanes]
   );
 
   const laneHeaderNodes: Node[] = useMemo(
@@ -234,7 +233,6 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
             height: step.height,
             kind: step.kind,
             order: step.order,
-            isConnecting,
           },
           width: step.width,
           height: step.height,
@@ -244,7 +242,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
           selected: selection.steps.includes(step.id),
         } satisfies Node;
       }),
-    [diagram.steps, laneMap, selection.steps, setSelection, isConnecting]
+    [diagram.steps, laneMap, selection.steps, setSelection]
   );
 
   const canvasHeight = useMemo(() => {
@@ -737,8 +735,8 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       <ReactFlow
         className={`h-full w-full ${isSpacePanning ? 'cursor-grab' : 'cursor-default'}`}
         style={{ minHeight: diagramHeight, zIndex: 1 }}
-        onConnectStart={() => setIsConnecting(true)}
-        onConnectEnd={() => setIsConnecting(false)}
+        onConnectStart={() => {}}
+        onConnectEnd={() => {}}
         connectOnClick
         nodes={nodes}
         edges={edges}

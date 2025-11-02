@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { NodeProps } from 'reactflow';
-import { useCallback, useRef } from 'react';
+import { useRef } from 'react';
 import { useDiagramStore } from '@/state/useDiagramStore';
 
 import { getContrastingTextColor, hexToRgb, mixRgb, rgbToCss, rgbaToCss } from '@/components/canvas/laneColors';
@@ -19,7 +19,7 @@ interface LaneNodeData {
 }
 
 export const LaneNode = ({ data }: NodeProps<LaneNodeData>) => {
-  const { id, title, color, height, width, isSelected, pendingRow, rowHeight, lanePadding, onRowHandleClick } = data;
+  const { id, title, color, height, width, pendingRow, rowHeight, lanePadding, onRowHandleClick } = data;
   const updateLane = useDiagramStore((state) => state.updateLane);
   const refWidth = useRef(width);
   const highlightTop = pendingRow !== null ? lanePadding + pendingRow * rowHeight : null;

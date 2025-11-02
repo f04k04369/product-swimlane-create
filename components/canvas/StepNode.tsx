@@ -23,7 +23,7 @@ interface StepNodeData {
 
 export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
   const updateStep = useDiagramStore((state) => state.updateStep);
-  const { title, description, color, fillColor, laneColor, width, height, kind, onSelect, order, isConnecting } = data;
+  const { title, description, color, fillColor, laneColor, width, height, kind, onSelect, order } = data;
 
   const containerStyle: CSSProperties = {
     width,
