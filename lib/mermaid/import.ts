@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid/non-secure';
-import { deriveStepX, rowIndexFromY, yForRow } from '@/lib/diagram/layout';
+import { deriveStepX, LANE_WIDTH, rowIndexFromY, yForRow } from '@/lib/diagram/layout';
 import type { Connection, Diagram, Lane, MarkerKind, PhaseGroup, Step, StepKind } from '@/lib/diagram/types';
 
 class MermaidParseError extends Error {}
@@ -99,6 +99,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
     const laneTitle = laneMeta.title ?? laneTitleRaw;
     const laneDescription = laneMeta.description ?? '';
     const laneColor = laneMeta.color ?? '#0ea5e9';
+    const laneWidth = typeof laneMeta.width === 'number' ? laneMeta.width : LANE_WIDTH;
 
     const lane: Lane = {
       id: laneId,
@@ -106,6 +107,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       description: laneDescription,
       order: laneOrder,
       color: laneColor,
+      width: laneWidth,
     };
     lanes.push(lane);
 
@@ -132,7 +134,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       const kind: StepKind = isStepKind(rawKind) ? rawKind : 'process';
       const userX = typeof stepMeta.userX === 'number' ? stepMeta.userX : undefined;
       const userY = typeof stepMeta.userY === 'number' ? stepMeta.userY : undefined;
-      const x = typeof userX === 'number' ? userX : typeof stepMeta.x === 'number' ? stepMeta.x : deriveStepX(lane.order, width);
+      const x = typeof userX === 'number' ? userX : typeof stepMeta.x === 'number' ? stepMeta.x : deriveStepX(lanes, lane.order, width);
       const y =
         typeof userY === 'number'
           ? userY
@@ -263,6 +265,7 @@ const sanitizeLane = (lane: Lane, index: number): Lane => ({
   description: typeof lane.description === 'string' ? lane.description : '',
   order: typeof lane.order === 'number' ? lane.order : index,
   color: typeof lane.color === 'string' ? lane.color : '#0ea5e9',
+  width: typeof lane.width === 'number' ? lane.width : LANE_WIDTH,
 });
 
 const sanitizeStep = (step: Step, lanes: Lane[], index: number): Step => {
@@ -274,7 +277,7 @@ const sanitizeStep = (step: Step, lanes: Lane[], index: number): Step => {
   const width = typeof step.width === 'number' ? step.width : 240;
   const height = typeof step.height === 'number' ? step.height : 120;
   const order = typeof step.order === 'number' ? step.order : index;
-  const x = typeof step.x === 'number' ? step.x : deriveStepX(lanes.find((lane) => lane.id === laneId)?.order ?? 0, width);
+  const x = typeof step.x === 'number' ? step.x : deriveStepX(lanes, lanes.find((lane) => lane.id === laneId)?.order ?? 0, width);
   const y = typeof step.y === 'number' ? step.y : yForRow(order, height);
   return {
     id: typeof step.id === 'string' ? step.id : nanoid(),

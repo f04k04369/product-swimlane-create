@@ -177,7 +177,23 @@ export const KeyEdge = memo(
     const rawEndAngle = points.length >= 2 ? computeSegmentAngle(points[points.length - 2], points[points.length - 1]) : null;
 
     const startAngle = rawStartAngle ?? angleFromPosition(sourcePosition) ?? 0;
-    const endAngle = rawEndAngle ?? angleFromPosition(targetPosition) ?? 0;
+    // エンドマーカーのフォールバックはターゲット側ハンドルの向きに応じて
+    // ノード内側へ向くように補正する（特に左右ハンドルでの垂直アプローチ時）
+    const endAngle = (() => {
+      if (rawEndAngle !== null) return rawEndAngle;
+      switch (targetPosition) {
+        case Position.Left:
+          return 0; // 左ハンドルの場合は右向き
+        case Position.Right:
+          return 180; // 右ハンドルの場合は左向き
+        case Position.Top:
+          return -90;
+        case Position.Bottom:
+          return 90;
+        default:
+          return 0;
+      }
+    })();
 
     const hasLabel = Boolean(data?.label);
 

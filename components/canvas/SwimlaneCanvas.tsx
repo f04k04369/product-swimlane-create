@@ -152,13 +152,14 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       sortedLanes.map((lane) => ({
         id: `lane-${lane.id}`,
         type: 'lane',
-        position: { x: deriveLanePositionX(lane.order), y: 0 },
+        position: { x: deriveLanePositionX(sortedLanes, lane.order), y: 0 },
         data: {
           id: lane.id,
           title: lane.title,
           color: lane.color,
           height: laneHeights.get(lane.id) ?? minimumHeight,
-          width: LANE_WIDTH,
+          width: lane.width,
+          isSelected: selection.lanes.includes(lane.id),
           pendingRow: pendingInsert?.laneId === lane.id ? pendingInsert.row : null,
           rowHeight: ROW_HEIGHT,
           lanePadding: LANE_PADDING,
@@ -168,7 +169,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         draggable: false,
         zIndex: 0,
       })),
-    [handleLaneRowSelect, laneHeights, minimumHeight, pendingInsert, sortedLanes]
+    [handleLaneRowSelect, laneHeights, minimumHeight, pendingInsert, sortedLanes, selection.lanes]
   );
 
   const laneHeaderNodes: Node[] = useMemo(
@@ -176,12 +177,12 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       sortedLanes.map((lane) => ({
         id: `lane-header-${lane.id}`,
         type: 'laneHeader',
-        position: { x: deriveLanePositionX(lane.order), y: 0 },
+        position: { x: deriveLanePositionX(sortedLanes, lane.order), y: 0 },
         data: {
           id: lane.id,
           title: lane.title,
           color: lane.color,
-          width: LANE_WIDTH,
+          width: lane.width,
           isSelected: selection.lanes.includes(lane.id),
         },
         selectable: false,
@@ -223,6 +224,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
             title: step.title,
             description: step.description,
             color: step.color,
+            fillColor: step.fillColor,
             laneColor: lane?.color ?? '#0ea5e9',
             laneId: step.laneId,
             onSelect: (id: string) =>
@@ -252,8 +254,9 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     if (!sortedLanes.length) return null;
     const firstOrder = sortedLanes[0].order;
     const lastOrder = sortedLanes[sortedLanes.length - 1].order;
-    const left = Math.max(0, deriveLanePositionX(firstOrder) - LANE_PADDING * 0.5);
-    const right = deriveLanePositionX(lastOrder) + LANE_WIDTH + LANE_PADDING * 0.5;
+    const left = Math.max(0, deriveLanePositionX(sortedLanes, firstOrder) - LANE_PADDING * 0.5);
+    const lastLane = sortedLanes[sortedLanes.length - 1];
+    const right = deriveLanePositionX(sortedLanes, lastOrder) + lastLane.width + LANE_PADDING * 0.5;
     return {
       left,
       width: Math.max(right - left, LANE_WIDTH + LANE_PADDING),
@@ -288,7 +291,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     if (!sortedLanes.length) {
       return laneAreaLeft;
     }
-    return deriveLanePositionX(sortedLanes[0].order);
+    return deriveLanePositionX(sortedLanes, sortedLanes[0].order);
   }, [laneAreaLeft, sortedLanes]);
 
   const phaseLabelX = useMemo(() => {
@@ -684,8 +687,8 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         return;
       }
       const lane = sortedLanes.find((candidate) => {
-        const xStart = deriveLanePositionX(candidate.order);
-        const xEnd = xStart + LANE_WIDTH;
+        const xStart = deriveLanePositionX(sortedLanes, candidate.order);
+        const xEnd = xStart + candidate.width;
         return projected.x >= xStart && projected.x <= xEnd;
       });
       if (lane) {
@@ -732,6 +735,9 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       <ReactFlow
         className={`h-full w-full ${isSpacePanning ? 'cursor-grab' : 'cursor-default'}`}
         style={{ minHeight: diagramHeight, zIndex: 1 }}
+        onConnectStart={() => {}}
+        onConnectEnd={() => {}}
+        connectOnClick
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}

@@ -6,6 +6,7 @@ export interface Lane {
   description?: string;
   order: number;
   color: string;
+  width: number;
 }
 
 export interface Step {
@@ -19,6 +20,7 @@ export interface Step {
   width: number;
   height: number;
   color: string;
+  fillColor?: string;
   kind: StepKind;
 }
 

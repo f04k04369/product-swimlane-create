@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid/non-secure';
 import type { Diagram, Lane, Step } from './types';
-import { deriveStepX, yForRow } from './layout';
+import { deriveStepX, yForRow, LANE_WIDTH } from './layout';
 
 export const STEP_DEFAULT_SIZE = { width: 240, height: 120 };
 
@@ -14,19 +14,21 @@ const createLane = (order: number, title: string): Lane => ({
   description: '',
   order,
   color: getLaneColor(order),
+  width: LANE_WIDTH,
 });
 
-const createStep = (lane: Lane, title: string, index: number): Step => ({
+const createStep = (lanes: Lane[], lane: Lane, title: string, index: number): Step => ({
   id: nanoid(),
   title,
   description: '',
   laneId: lane.id,
   order: index,
-  x: deriveStepX(lane.order, STEP_DEFAULT_SIZE.width),
+  x: deriveStepX(lanes, lane.order, STEP_DEFAULT_SIZE.width),
   y: yForRow(index, STEP_DEFAULT_SIZE.height),
   width: STEP_DEFAULT_SIZE.width,
   height: STEP_DEFAULT_SIZE.height,
-  color: '#1f2937',
+  color: '#000000',
+  fillColor: '#e0ebff',
   kind: 'process',
 });
 
@@ -37,7 +39,7 @@ export const createEmptyDiagram = (): Diagram => {
     createLane(1, '開発'),
     createLane(2, '運用'),
   ];
-  const steps = lanes.map((lane) => createStep(lane, `タスク ${lane.order + 1}`, 0));
+  const steps = lanes.map((lane) => createStep(lanes, lane, `タスク ${lane.order + 1}`, 0));
 
   return {
     id: nanoid(),
