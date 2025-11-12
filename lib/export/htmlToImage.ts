@@ -1,4 +1,6 @@
 import { toPng, toSvg } from 'html-to-image';
+import { buildDiagramSvg } from '@/lib/export/svgBuilder';
+import type { Diagram } from '@/lib/diagram/types';
 
 const LANE_BOUNDS_SELECTORS = [
   '.react-flow__node',
@@ -29,6 +31,10 @@ export interface DiagramContentBounds {
 export interface DiagramCaptureOptions {
   pixelRatio?: number;
   contentBoundsOverride?: DiagramContentBounds | null;
+  diagram?: Diagram | null;
+  padding?: number;
+  backgroundColor?: string;
+  strokeColor?: string;
 }
 
 export interface DiagramCaptureResult<T = string> {
@@ -440,11 +446,269 @@ export const exportDiagramToPng = async (
   await exportCroppedDiagramToPng(capture, selection, filename);
 };
 
+const extractSvgXmlFromDataUri = (dataUri: string): string => {
+  // data:image/svg+xml;base64,<base64> 形式の場合
+  if (dataUri.startsWith('data:image/svg+xml;base64,')) {
+    const base64 = dataUri.substring('data:image/svg+xml;base64,'.length);
+    try {
+      const decoded = atob(base64);
+      return decodeURIComponent(escape(decoded));
+    } catch {
+      // base64デコードに失敗した場合は、そのまま返す
+      return dataUri;
+    }
+  }
+
+  // data:image/svg+xml;charset=utf-8,<url-encoded> 形式の場合
+  if (dataUri.startsWith('data:image/svg+xml;charset=utf-8,')) {
+    const encoded = dataUri.substring('data:image/svg+xml;charset=utf-8,'.length);
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return encoded;
+    }
+  }
+
+  // data:image/svg+xml,<url-encoded> 形式の場合
+  if (dataUri.startsWith('data:image/svg+xml,')) {
+    const encoded = dataUri.substring('data:image/svg+xml,'.length);
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return encoded;
+    }
+  }
+
+  // 既にXMLテキストの場合はそのまま返す
+  return dataUri;
+};
+
+const ensureSvgXmlns = (svgXml: string): string => {
+  // xmlns属性が存在しない場合は追加
+  if (!svgXml.includes('xmlns=') && !svgXml.includes('xmlns:')) {
+    // <svg タグを見つけて、xmlns属性を追加
+    const svgTagMatch = svgXml.match(/<svg\s+([^>]*)>/i);
+    if (svgTagMatch) {
+      const attributes = svgTagMatch[1];
+      const newSvgTag = `<svg xmlns="http://www.w3.org/2000/svg" ${attributes}>`;
+      return svgXml.replace(/<svg\s+[^>]*>/i, newSvgTag);
+    }
+  }
+  return svgXml;
+};
+
+const sanitizeSvg = (svgXml: string, exportWidth: number, exportHeight: number): string => {
+  try {
+    const parser = new DOMParser();
+    const svgDoc = parser.parseFromString(svgXml, 'image/svg+xml');
+    const parserError = svgDoc.querySelector('parsererror');
+    if (parserError) {
+      console.warn('SVG parse error, returning original:', parserError.textContent);
+      return svgXml;
+    }
+
+    const svgElement = svgDoc.documentElement;
+    if (!svgElement || svgElement.nodeName.toLowerCase() !== 'svg') {
+      return svgXml;
+    }
+
+    const requiresXlink = Boolean(svgElement.querySelector('[xlink\\:href]'));
+
+    svgElement.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    if (requiresXlink) {
+      svgElement.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+    } else {
+      svgElement.removeAttribute('xmlns:xlink');
+    }
+
+    svgElement.setAttribute('version', '1.1');
+
+    const declaredWidth = svgElement.getAttribute('width');
+    const declaredHeight = svgElement.getAttribute('height');
+    if (!declaredWidth || declaredWidth === '100%' || declaredWidth === 'auto' || declaredWidth === '0') {
+      svgElement.setAttribute('width', String(Math.max(1, Math.round(exportWidth))));
+    }
+    if (!declaredHeight || declaredHeight === '100%' || declaredHeight === 'auto' || declaredHeight === '0') {
+      svgElement.setAttribute('height', String(Math.max(1, Math.round(exportHeight))));
+    }
+    if (!svgElement.hasAttribute('viewBox')) {
+      svgElement.setAttribute('viewBox', `0 0 ${Math.max(1, Math.round(exportWidth))} ${Math.max(1, Math.round(exportHeight))}`);
+    }
+    if (!svgElement.hasAttribute('preserveAspectRatio')) {
+      svgElement.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    }
+
+    const rootStyle = svgElement.getAttribute('style') ?? '';
+    const normalizedRootStyle = new Set(
+      rootStyle
+        .split(';')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    );
+    normalizedRootStyle.add('background:#ffffff');
+    normalizedRootStyle.add('background-color:#ffffff');
+    normalizedRootStyle.add('color-scheme:light');
+    svgElement.setAttribute('style', Array.from(normalizedRootStyle).join('; '));
+
+    const removeFontDeclarations = (value: string | null) => {
+      if (!value) return value;
+      return value
+        .replace(/"__Inter[^"]*"/gi, '')
+        .replace(/'__Inter[^']*'/gi, '')
+        .replace(/"Inter[^"]*"/gi, '')
+        .replace(/'Inter[^']*'/gi, '')
+        .replace(/ArialMT/gi, '')
+        .trim();
+    };
+
+    const sanitizeStyleAttribute = (element: Element) => {
+      const style = element.getAttribute('style');
+      if (!style) return;
+
+      const next: Record<string, string> = {};
+      style
+        .split(';')
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((declaration) => {
+          const [rawProp, ...rawValueParts] = declaration.split(':');
+          if (!rawProp || rawValueParts.length === 0) return;
+          const prop = rawProp.trim().toLowerCase();
+          const value = rawValueParts.join(':').trim();
+          if (!prop || !value) return;
+          next[prop] = value;
+        });
+
+      const setIfAbsent = (attr: string, prop: string) => {
+        const value = next[prop];
+        if (!value) return;
+        if (!element.hasAttribute(attr)) {
+          element.setAttribute(attr, value);
+        }
+        delete next[prop];
+      };
+
+      setIfAbsent('fill', 'fill');
+      setIfAbsent('stroke', 'stroke');
+      setIfAbsent('stroke-width', 'stroke-width');
+      setIfAbsent('opacity', 'opacity');
+      setIfAbsent('transform', 'transform');
+
+      delete next['font-family'];
+      delete next['font-weight'];
+      delete next['font-style'];
+      delete next['font'];
+
+      const remaining = Object.entries(next)
+        .filter(([, propValue]) => propValue.length > 0)
+        .map(([propName, propValue]) => `${propName}: ${propValue}`)
+        .join('; ');
+
+      if (remaining) {
+        element.setAttribute('style', remaining);
+      } else {
+        element.removeAttribute('style');
+      }
+    };
+
+    svgElement.querySelectorAll('script').forEach((script) => script.remove());
+
+    svgElement.querySelectorAll('*').forEach((element) => {
+      sanitizeStyleAttribute(element);
+
+      if (element.hasAttribute('font-family')) {
+        const sanitized = removeFontDeclarations(element.getAttribute('font-family'));
+        element.setAttribute('font-family', sanitized && sanitized.length > 0 ? sanitized : 'Helvetica, Arial, sans-serif');
+      } else if (element.tagName.toLowerCase() === 'text') {
+        element.setAttribute('font-family', 'Helvetica, Arial, sans-serif');
+      }
+
+      if (element.hasAttribute('font')) {
+        element.removeAttribute('font');
+      }
+      if (element.hasAttribute('font-face')) {
+        element.removeAttribute('font-face');
+      }
+
+      if (element.hasAttribute('data-testid') || element.hasAttribute('data-type')) {
+        element.removeAttribute('data-testid');
+        element.removeAttribute('data-type');
+      }
+
+      Array.from(element.attributes).forEach((attr) => {
+        if (attr.name.startsWith('data-')) {
+          element.removeAttribute(attr.name);
+        }
+      });
+    });
+
+    svgElement.querySelectorAll('style').forEach((styleEl) => {
+      let cssText = styleEl.textContent ?? '';
+      cssText = cssText
+        .replace(/@font-face\s*\{[^}]*\}/gi, '')
+        .replace(/font-family\s*:\s*[^;{}'"]+;?/gi, '')
+        .trim();
+      if (cssText.length === 0) {
+        styleEl.remove();
+      } else {
+        styleEl.textContent = cssText;
+      }
+    });
+
+    const serializer = new XMLSerializer();
+    let result = serializer.serializeToString(svgElement);
+
+    const xmlHeader = '<?xml version="1.0" encoding="UTF-8"?>';
+    const doctype = '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">';
+    const hasHeader = result.trimStart().startsWith('<?xml');
+    const hasDoctype = result.includes('<!DOCTYPE');
+
+    if (!hasHeader || !hasDoctype) {
+      const pieces: string[] = [];
+      if (!hasHeader) {
+        pieces.push(xmlHeader);
+      }
+      if (!hasDoctype) {
+        pieces.push(doctype);
+      }
+      pieces.push(result);
+      result = pieces.join('\n');
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Failed to sanitize SVG output', error);
+    return svgXml;
+  }
+};
+
 export const exportDiagramToSvg = async (
   element: HTMLElement,
   filename = 'swimlane.svg',
   options?: DiagramCaptureOptions
 ) => {
+  if (options?.diagram) {
+    const svgXml = buildDiagramSvg(options.diagram, {
+      bounds: options.contentBoundsOverride ?? null,
+      padding: options.padding,
+      backgroundColor: options.backgroundColor,
+      strokeColor: options.strokeColor,
+    });
+
+    const downloadName = filename.toLowerCase().endsWith('.svg') ? filename : `${filename}.svg`;
+    const blob = new Blob([svgXml], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = downloadName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    return;
+  }
+
   const capture = await captureDiagram(
     element,
     (target) => toSvg(target, { cacheBust: true }),
@@ -453,25 +717,27 @@ export const exportDiagramToSvg = async (
       contentBoundsOverride: options?.contentBoundsOverride ?? null,
     }
   );
-  const svgContent = capture.data;
-  const trimmed = svgContent.trim();
+  
+  // SVGコンテンツをXMLテキストとして抽出
+  let svgXml = extractSvgXmlFromDataUri(capture.data);
+  svgXml = svgXml.trim();
+  
+  // xmlns属性を確実に含める
+  svgXml = ensureSvgXmlns(svgXml);
+  
+  // SVGをIllustratorやMiroで扱いやすいようにクリーンアップ
+  svgXml = sanitizeSvg(svgXml, capture.exportWidth, capture.exportHeight);
+  
+  // XMLテキストとしてBlobを作成
+  const blob = new Blob([svgXml], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  
   const downloadName = filename.toLowerCase().endsWith('.svg') ? filename : `${filename}.svg`;
-  let url = trimmed;
-  let needsRevoke = false;
-
-  if (!trimmed.startsWith('data:image/svg+xml')) {
-    const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
-    url = URL.createObjectURL(blob);
-    needsRevoke = true;
-  }
-
   const link = document.createElement('a');
   link.href = url;
   link.download = downloadName;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  if (needsRevoke) {
-    URL.revokeObjectURL(url);
-  }
+  URL.revokeObjectURL(url);
 };
