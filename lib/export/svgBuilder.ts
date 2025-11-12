@@ -26,18 +26,32 @@ const escapeXml = (value: string): string =>
     .replace(/>/g, '&gt;');
 
 const resolveHandlePoint = (step: Step, handle: string | undefined) => {
-  const x = step.x;
-  const y = step.y;
+  const left = step.x;
+  const top = step.y;
+  const centerX = left + step.width / 2;
+  const centerY = top + step.height / 2;
+  const offsetY = top + step.height * 0.6;
+
   switch (handle) {
     case 'top':
-      return { x: x + step.width / 2, y };
-    case 'left':
-      return { x, y: y + step.height / 2 };
-    case 'right':
-      return { x: x + step.width, y: y + step.height / 2 };
+      return { x: centerX, y: top };
     case 'bottom':
-    default:
-      return { x: x + step.width / 2, y: y + step.height };
+      return { x: centerX, y: top + step.height };
+    default: {
+      if (handle?.includes('left')) {
+        return { x: left, y: offsetY };
+      }
+      if (handle?.includes('right')) {
+        return { x: left + step.width, y: offsetY };
+      }
+      if (handle === 'left') {
+        return { x: left, y: centerY };
+      }
+      if (handle === 'right') {
+        return { x: left + step.width, y: centerY };
+      }
+      return { x: centerX, y: top + step.height };
+    }
   }
 };
 
@@ -149,31 +163,51 @@ const buildStepShape = (step: Step) => {
   }
 };
 
-const buildStepText = (step: Step, padding = 12) => {
-  const lines = [step.title || ''];
-  if (step.description) {
-    step.description.split('\n').forEach((line) => {
-      lines.push(line);
-    });
-  }
-  const startX = step.x + padding;
-  const startY = step.y + padding + 14;
+const DESCRIPTION_TEXT_COLOR = '#64748b';
 
-  let dy = 0;
-  const tspan = lines
-    .filter((line) => line.trim().length > 0)
-    .map((line, index) => {
-      const content = escapeXml(line);
-      if (index === 0) {
-        dy = 0;
-        return `<tspan x="${startX}" y="${startY}">${content}</tspan>`;
-      }
-      dy += 16;
-      return `<tspan x="${startX}" y="${startY + dy}">${content}</tspan>`;
-    })
-    .join('');
+const buildStepText = (step: Step) => {
+  const title = escapeXml(step.title || '無題のステップ');
+  const descriptionLines =
+    step.description
+      ?.split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map(escapeXml) ?? [];
 
-  return `<text font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="${STEP_TEXT_COLOR}">${tspan}</text>`;
+  const centerX = step.x + step.width / 2;
+  const lineMetas = [
+    { text: title, fontSize: 14, fontWeight: 600, color: step.color ?? STEP_TEXT_COLOR },
+    ...descriptionLines.map((line) => ({
+      text: line,
+      fontSize: 12,
+      fontWeight: 400,
+      color: DESCRIPTION_TEXT_COLOR,
+    })),
+  ];
+
+  const lineSpacing = 6;
+  const totalHeight = lineMetas.reduce(
+    (acc, meta, index) => acc + meta.fontSize + (index > 0 ? lineSpacing : 0),
+    0
+  );
+
+  let currentY = step.y + step.height / 2 - totalHeight / 2;
+  const texts: string[] = [];
+
+  lineMetas.forEach((meta, index) => {
+    currentY += meta.fontSize / 2;
+    const y = currentY;
+    currentY += meta.fontSize / 2;
+    if (index < lineMetas.length - 1) {
+      currentY += lineSpacing;
+    }
+
+    texts.push(
+      `<text x="${centerX}" y="${y}" font-family="Helvetica, Arial, sans-serif" font-size="${meta.fontSize}" font-weight="${meta.fontWeight}" fill="${meta.color}" text-anchor="middle" dominant-baseline="middle">${meta.text}</text>`
+    );
+  });
+
+  return texts.join('\n');
 };
 
 const buildConnectionLabel = (connection: Connection, labelPoint: { x: number; y: number }) => {
