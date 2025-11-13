@@ -1,5 +1,6 @@
 import { computeLaneHeight, deriveLanePositionX, LANE_PADDING, LANE_WIDTH, ROW_HEIGHT } from '@/lib/diagram/layout';
 import type { Diagram, DiagramContentBounds, Step, Connection } from '@/lib/diagram/types';
+import { hexToRgb, mixRgb, rgbToCss, rgbaToCss, getContrastingTextColor } from '@/components/canvas/laneColors';
 
 interface BuildSvgOptions {
   bounds?: DiagramContentBounds | null;
@@ -25,6 +26,22 @@ const escapeXml = (value: string): string =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
+type HandlePosition = 'Left' | 'Right' | 'Top' | 'Bottom';
+
+const getHandlePosition = (handle: string | undefined): HandlePosition | null => {
+  if (!handle) return null;
+  const lower = handle.toLowerCase();
+  if (lower.includes('left')) return 'Left';
+  if (lower.includes('right')) return 'Right';
+  if (lower.includes('top')) return 'Top';
+  if (lower.includes('bottom')) return 'Bottom';
+  if (lower === 'left') return 'Left';
+  if (lower === 'right') return 'Right';
+  if (lower === 'top') return 'Top';
+  if (lower === 'bottom') return 'Bottom';
+  return null;
+};
+
 const resolveHandlePoint = (step: Step, handle: string | undefined) => {
   const left = step.x;
   const top = step.y;
@@ -32,26 +49,19 @@ const resolveHandlePoint = (step: Step, handle: string | undefined) => {
   const centerY = top + step.height / 2;
   const offsetY = top + step.height * 0.6;
 
-  switch (handle) {
-    case 'top':
+  const position = getHandlePosition(handle);
+
+  switch (position) {
+    case 'Top':
       return { x: centerX, y: top };
-    case 'bottom':
+    case 'Bottom':
       return { x: centerX, y: top + step.height };
-    default: {
-      if (handle?.includes('left')) {
-        return { x: left, y: offsetY };
-      }
-      if (handle?.includes('right')) {
-        return { x: left + step.width, y: offsetY };
-      }
-      if (handle === 'left') {
-        return { x: left, y: centerY };
-      }
-      if (handle === 'right') {
-        return { x: left + step.width, y: centerY };
-      }
+    case 'Left':
+      return { x: left, y: offsetY };
+    case 'Right':
+      return { x: left + step.width, y: offsetY };
+    default:
       return { x: centerX, y: top + step.height };
-    }
   }
 };
 
@@ -63,44 +73,97 @@ const buildConnectionPath = (connection: Connection, stepMap: Map<string, Step>)
   const start = resolveHandlePoint(source, connection.sourceHandle);
   const end = resolveHandlePoint(target, connection.targetHandle);
 
+  const sourcePosition = getHandlePosition(connection.sourceHandle) ?? 'Bottom';
+  const targetPosition = getHandlePosition(connection.targetHandle) ?? 'Top';
   const control = connection.control ?? null;
 
-  const points: Array<{ x: number; y: number }> = [];
-  points.push({ x: start.x, y: start.y });
+  const ALIGN_TOLERANCE = 6;
+  const sameColumn = Math.abs(start.x - end.x) <= ALIGN_TOLERANCE;
+  const sameRow = Math.abs(start.y - end.y) <= ALIGN_TOLERANCE;
+  const horizontalFirst = sourcePosition === 'Left' || sourcePosition === 'Right';
+  const horizontalLast = targetPosition === 'Left' || targetPosition === 'Right';
 
-  if (control) {
-    points.push({ x: control.x, y: start.y });
-    points.push({ x: control.x, y: control.y });
-    points.push({ x: end.x, y: control.y });
-  } else {
-    const dx = Math.abs(end.x - start.x);
-    const dy = Math.abs(end.y - start.y);
-    if (dx < dy) {
-      const midY = (start.y + end.y) / 2;
-      points.push({ x: start.x, y: midY });
-      points.push({ x: end.x, y: midY });
-    } else {
-      const midX = (start.x + end.x) / 2;
-      points.push({ x: midX, y: start.y });
-      points.push({ x: midX, y: end.y });
+  const buildPoints = (): Array<{ x: number; y: number }> => {
+    if (control) {
+      const midX = control.x;
+      const midY = control.y;
+      return [
+        { x: start.x, y: start.y },
+        { x: midX, y: start.y },
+        { x: midX, y: midY },
+        { x: end.x, y: midY },
+        { x: end.x, y: end.y },
+      ];
     }
-  }
 
-  points.push({ x: end.x, y: end.y });
+    const corners: Array<{ x: number; y: number }> = [];
+    if (!(sameColumn || sameRow)) {
+      if (horizontalFirst && horizontalLast) {
+        const midX = start.x + (end.x - start.x) / 2;
+        corners.push({ x: midX, y: start.y });
+        corners.push({ x: midX, y: end.y });
+      } else if (horizontalFirst) {
+        corners.push({ x: end.x, y: start.y });
+      } else if (horizontalLast) {
+        corners.push({ x: start.x, y: end.y });
+      } else {
+        const midY = start.y + (end.y - start.y) / 2;
+        corners.push({ x: start.x, y: midY });
+        corners.push({ x: end.x, y: midY });
+      }
+    }
+
+    return [{ x: start.x, y: start.y }, ...corners, { x: end.x, y: end.y }];
+  };
+
+  const points = buildPoints();
 
   const path = points
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
     .join(' ');
 
-  const labelPoint = (() => {
-    const idx = Math.floor(points.length / 2);
-    const prev = points[idx - 1] ?? points[idx];
-    const next = points[idx];
-    return {
-      x: (prev.x + next.x) / 2,
-      y: (prev.y + next.y) / 2,
-    };
-  })();
+  const computePolylineMidpoint = (polyline: Array<{ x: number; y: number }>) => {
+    if (polyline.length <= 2) {
+      const startPoint = polyline[0];
+      const endPoint = polyline.at(-1) ?? startPoint;
+      return {
+        x: (startPoint.x + endPoint.x) / 2,
+        y: (startPoint.y + endPoint.y) / 2,
+      };
+    }
+
+    let total = 0;
+    const segments: Array<{ length: number; start: { x: number; y: number }; end: { x: number; y: number } }> = [];
+    for (let i = 0; i < polyline.length - 1; i += 1) {
+      const startPoint = polyline[i];
+      const endPoint = polyline[i + 1];
+      const length = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+      total += length;
+      segments.push({ length, start: startPoint, end: endPoint });
+    }
+
+    if (total === 0) {
+      const firstPoint = polyline[0];
+      return { x: firstPoint.x, y: firstPoint.y };
+    }
+
+    let distance = total / 2;
+    for (const seg of segments) {
+      if (distance <= seg.length) {
+        const ratio = distance / seg.length;
+        return {
+          x: seg.start.x + (seg.end.x - seg.start.x) * ratio,
+          y: seg.start.y + (seg.end.y - seg.start.y) * ratio,
+        };
+      }
+      distance -= seg.length;
+    }
+
+    const lastSeg = segments.at(-1);
+    return lastSeg ? { x: lastSeg.end.x, y: lastSeg.end.y } : polyline[0];
+  };
+
+  const labelPoint = computePolylineMidpoint(points);
 
   return {
     path,
@@ -166,26 +229,47 @@ const buildStepShape = (step: Step) => {
 const DESCRIPTION_TEXT_COLOR = '#64748b';
 
 const buildStepText = (step: Step) => {
-  const title = escapeXml(step.title || '無題のステップ');
-  const descriptionLines =
-    step.description
-      ?.split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .map(escapeXml) ?? [];
-
   const centerX = step.x + step.width / 2;
-  const lineMetas = [
-    { text: title, fontSize: 14, fontWeight: 600, color: step.color ?? STEP_TEXT_COLOR },
-    ...descriptionLines.map((line) => ({
-      text: line,
+  
+  // 改行文字列（\n）を実際の改行文字に変換してから分割
+  const normalizeNewlines = (text: string): string => {
+    return text.replace(/\\n/g, '\n').replace(/\\r\\n/g, '\r\n').replace(/\\r/g, '\r');
+  };
+  
+  const normalizedTitle = step.title && step.title.length > 0 ? normalizeNewlines(step.title) : '';
+  const normalizedDescription = step.description ? normalizeNewlines(step.description) : '';
+  
+  const titleLines = normalizedTitle ? normalizedTitle.split(/\r?\n/) : ['無題のステップ'];
+  const descriptionLines = normalizedDescription ? normalizedDescription.split(/\r?\n/) : [];
+
+  type LineMeta = {
+    rawText: string;
+    fontSize: number;
+    fontWeight: number;
+    color: string;
+  };
+
+  const lineMetas: LineMeta[] = [];
+
+  titleLines.forEach((line) => {
+    lineMetas.push({
+      rawText: line,
+      fontSize: 14,
+      fontWeight: 600,
+      color: step.color ?? STEP_TEXT_COLOR,
+    });
+  });
+
+  descriptionLines.forEach((line) => {
+    lineMetas.push({
+      rawText: line,
       fontSize: 12,
       fontWeight: 400,
       color: DESCRIPTION_TEXT_COLOR,
-    })),
-  ];
+    });
+  });
 
-  const lineSpacing = 6;
+  const lineSpacing = 8;
   const totalHeight = lineMetas.reduce(
     (acc, meta, index) => acc + meta.fontSize + (index > 0 ? lineSpacing : 0),
     0
@@ -202,8 +286,10 @@ const buildStepText = (step: Step) => {
       currentY += lineSpacing;
     }
 
+    const content = meta.rawText.length > 0 ? escapeXml(meta.rawText) : '&#160;';
+
     texts.push(
-      `<text x="${centerX}" y="${y}" font-family="Helvetica, Arial, sans-serif" font-size="${meta.fontSize}" font-weight="${meta.fontWeight}" fill="${meta.color}" text-anchor="middle" dominant-baseline="middle">${meta.text}</text>`
+      `<text x="${centerX}" y="${y}" font-family="Helvetica, Arial, sans-serif" font-size="${meta.fontSize}" font-weight="${meta.fontWeight}" fill="${meta.color}" text-anchor="middle" dominant-baseline="middle">${content}</text>`
     );
   });
 
@@ -212,7 +298,12 @@ const buildStepText = (step: Step) => {
 
 const buildConnectionLabel = (connection: Connection, labelPoint: { x: number; y: number }) => {
   if (!connection.label) return '';
-  const lines = connection.label.split('\n');
+  // 改行文字列（\n）を実際の改行文字に変換してから分割
+  const normalizeNewlines = (text: string): string => {
+    return text.replace(/\\n/g, '\n').replace(/\\r\\n/g, '\r\n').replace(/\\r/g, '\r');
+  };
+  const normalizedLabel = normalizeNewlines(connection.label);
+  const lines = normalizedLabel.split(/\r?\n/);
   const startX = labelPoint.x;
   const startY = labelPoint.y - (lines.length - 1) * 8;
   const tspans = lines
@@ -298,18 +389,32 @@ export const buildDiagramSvg = (diagram: Diagram, options: BuildSvgOptions = {})
     const laneX = shiftX(deriveLanePositionX(orderedLanes, lane.order));
     const laneY = shiftY(0);
 
+    // レーンの背景色を計算（LaneNode.tsxと同じロジック）
+    const baseColor = hexToRgb(lane.color);
+    const laneFillColor = mixRgb(baseColor, { r: 255, g: 255, b: 255 }, 0.9);
+    const laneBorderTint = mixRgb(baseColor, { r: 148, g: 163, b: 184 }, 0.55);
+    const headerFillColor = mixRgb(baseColor, { r: 255, g: 255, b: 255 }, 0.7);
+    const headerTextColor = getContrastingTextColor(headerFillColor);
+
+    // レーン本体の背景（85%の不透明度）
+    const laneFillRgba = rgbaToCss(laneFillColor, 0.85);
+    // ボーダー色（60%の不透明度）
+    const borderRgba = rgbaToCss(laneBorderTint, 0.6);
+    // ヘッダーの背景色（100%の不透明度）
+    const headerFillRgb = rgbToCss(headerFillColor);
+
     svgParts.push(
-      `<rect x="${laneX}" y="${laneY}" width="${laneWidth}" height="${laneHeight}" fill="#ffffff" stroke="${strokeColor}" stroke-width="1.5"/>`
+      `<rect x="${laneX}" y="${laneY}" width="${laneWidth}" height="${laneHeight}" fill="${laneFillRgba}" stroke="${borderRgba}" stroke-width="1.5"/>`
     );
     svgParts.push(
-      `<rect x="${laneX}" y="${laneY}" width="${laneWidth}" height="${HEADER_HEIGHT}" fill="${LANE_HEADER_FILL}" stroke="${strokeColor}" stroke-width="1.5"/>`
+      `<rect x="${laneX}" y="${laneY}" width="${laneWidth}" height="${HEADER_HEIGHT}" fill="${headerFillRgb}" stroke="${borderRgba}" stroke-width="1.5"/>`
     );
 
     const title = escapeXml(lane.title || 'Lane');
     const textX = laneX + laneWidth / 2;
     const textY = laneY + HEADER_HEIGHT / 2 + 5;
     svgParts.push(
-      `<text x="${textX}" y="${textY}" font-family="Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="${TEXT_COLOR}" text-anchor="middle">${title}</text>`
+      `<text x="${textX}" y="${textY}" font-family="Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="${headerTextColor}" text-anchor="middle">${title}</text>`
     );
   });
 
