@@ -391,10 +391,11 @@ const StepPanelInner = () => {
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <div>
           <label className="text-xs font-medium text-slate-500">タイトル</label>
-          <input
-            className={inputStyles}
+          <textarea
+            className={`${inputStyles} min-h-[48px] resize-none`}
             value={selectedStep.title}
             onChange={(event) => updateStep(selectedStep.id, { title: event.target.value })}
+            onKeyDown={(event) => event.stopPropagation()}
           />
         </div>
         <div>
@@ -403,6 +404,7 @@ const StepPanelInner = () => {
             className={`${inputStyles} min-h-[80px] resize-none`}
             value={selectedStep.description ?? ''}
             onChange={(event) => updateStep(selectedStep.id, { description: event.target.value })}
+            onKeyDown={(event) => event.stopPropagation()}
           />
         </div>
         <div>

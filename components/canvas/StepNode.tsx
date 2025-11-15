@@ -141,10 +141,14 @@ export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
               </svg>
             </div>
           )}
-          <span className="font-semibold" style={{ color }}>
+          <span className="font-semibold whitespace-pre-line break-words" style={{ color }}>
             {title || '無題のステップ'}
           </span>
-          {description && <p className="mt-2 text-xs text-slate-500">{description}</p>}
+          {description && (
+            <p className="mt-2 whitespace-pre-line break-words text-xs text-slate-500">
+              {description}
+            </p>
+          )}
         </div>
       </div>
       {kind !== 'end' && (

@@ -380,6 +380,8 @@ export const ImageExportDialog = ({ open, onClose, canvasRef, filenameBase, onSt
         }
         await exportDiagramToSvg(canvasRef.current, svgName, {
           contentBoundsOverride: bounds.baseOverride ?? diagramBounds ?? null,
+          diagram,
+          padding: 48,
         });
         onStatus?.('info', 'SVGをダウンロードしました');
       }
