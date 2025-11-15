@@ -2,7 +2,7 @@ import type { Lane, Step } from './types';
 
 export const GRID_SIZE = 32;
 export const LANE_WIDTH = 320;
-export const LANE_GAP = 48;
+export const LANE_GAP = 0;
 export const LANE_PADDING = 80;
 export const ROW_HEIGHT = 240;
 export const LANE_COLUMN_HEIGHT = LANE_PADDING * 2 + ROW_HEIGHT;
