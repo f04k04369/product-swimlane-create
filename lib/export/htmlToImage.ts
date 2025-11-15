@@ -34,7 +34,6 @@ export interface DiagramCaptureOptions {
   diagram?: Diagram | null;
   padding?: number;
   backgroundColor?: string;
-  strokeColor?: string;
 }
 
 export interface DiagramCaptureResult<T = string> {
@@ -692,7 +691,6 @@ export const exportDiagramToSvg = async (
       bounds: options.contentBoundsOverride ?? null,
       padding: options.padding,
       backgroundColor: options.backgroundColor,
-      strokeColor: options.strokeColor,
     });
 
     const downloadName = filename.toLowerCase().endsWith('.svg') ? filename : `${filename}.svg`;
