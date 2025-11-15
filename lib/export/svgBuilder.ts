@@ -6,12 +6,10 @@ interface BuildSvgOptions {
   bounds?: DiagramContentBounds | null;
   padding?: number;
   backgroundColor?: string;
-  strokeColor?: string;
 }
 
 const DEFAULT_PADDING = 48;
 const HEADER_HEIGHT = 40;
-const LANE_HEADER_FILL = '#f1f5f9';
 const LANE_BORDER_COLOR = '#cbd5f5';
 const TEXT_COLOR = '#1f2933';
 const STEP_TEXT_COLOR = '#1f2937';
@@ -46,7 +44,6 @@ const resolveHandlePoint = (step: Step, handle: string | undefined) => {
   const left = step.x;
   const top = step.y;
   const centerX = left + step.width / 2;
-  const centerY = top + step.height / 2;
   const offsetY = top + step.height * 0.6;
 
   const position = getHandlePosition(handle);
@@ -349,7 +346,6 @@ export const buildDiagramSvg = (diagram: Diagram, options: BuildSvgOptions = {})
   const padding = options.padding ?? DEFAULT_PADDING;
   const bounds = options.bounds ?? computeDiagramBounds(diagram);
   const background = options.backgroundColor ?? '#ffffff';
-  const strokeColor = options.strokeColor ?? LANE_BORDER_COLOR;
 
   const boundsMaxX = bounds.minX + bounds.width;
   const boundsMaxY = bounds.minY + bounds.height;
