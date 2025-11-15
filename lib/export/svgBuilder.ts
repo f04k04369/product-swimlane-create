@@ -10,7 +10,6 @@ interface BuildSvgOptions {
 
 const DEFAULT_PADDING = 48;
 const HEADER_HEIGHT = 40;
-const LANE_BORDER_COLOR = '#cbd5f5';
 const TEXT_COLOR = '#1f2933';
 const STEP_TEXT_COLOR = '#1f2937';
 const STEP_BORDER_COLOR = '#94a3b8';
