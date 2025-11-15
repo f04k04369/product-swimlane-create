@@ -1,5 +1,6 @@
 import { computeLaneHeight, deriveLanePositionX, LANE_PADDING, LANE_WIDTH, ROW_HEIGHT } from '@/lib/diagram/layout';
-import type { Diagram, DiagramContentBounds, Step, Connection } from '@/lib/diagram/types';
+import type { Diagram, Step, Connection } from '@/lib/diagram/types';
+import type { DiagramContentBounds } from './htmlToImage';
 import { hexToRgb, mixRgb, rgbToCss, rgbaToCss, getContrastingTextColor } from '@/components/canvas/laneColors';
 
 interface BuildSvgOptions {
