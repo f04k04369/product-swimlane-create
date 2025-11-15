@@ -158,6 +158,26 @@ const sortSteps = (diagram: Diagram) => {
   });
 };
 
+const sanitizeLaneColor = (color?: string) => {
+  if (typeof color !== 'string') return undefined;
+  const trimmed = color.trim();
+  if (!trimmed) return undefined;
+  return trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+};
+
+const normalizeLaneOrder = (lanes: Lane[]) =>
+  lanes
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((lane, index) => {
+      const sanitizedColor = sanitizeLaneColor(lane.color);
+      return {
+        ...lane,
+        order: index,
+        color: sanitizedColor ?? getLaneColor(index),
+      };
+    });
+
 const removeStepFromDiagram = (diagram: Diagram, stepId: ElementID) => {
   const index = diagram.steps.findIndex((step) => step.id === stepId);
   if (index === -1) return undefined;
@@ -321,11 +341,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           color: getLaneColor(order),
           width: 320,
         });
-        draft.lanes = draft.lanes.map((lane, index) => ({
-          ...lane,
-          order: index,
-          color: getLaneColor(index),
-        }));
+        draft.lanes = normalizeLaneOrder(draft.lanes);
         recalcAllLaneLayouts(draft);
         sortSteps(draft);
       }, 'add lane', {
@@ -338,16 +354,14 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       commit((draft) => {
         const lane = draft.lanes.find((item) => item.id === id);
         if (!lane) return;
-        Object.assign(lane, updates);
-        if (typeof updates.order === 'number') {
-          draft.lanes = draft.lanes
-            .slice()
-            .sort((a, b) => a.order - b.order)
-            .map((laneItem, index) => ({
-              ...laneItem,
-              order: index,
-              color: getLaneColor(index),
-            }));
+        const nextUpdates = { ...updates };
+        if (typeof nextUpdates.color === 'string') {
+          const sanitizedColor = sanitizeLaneColor(nextUpdates.color);
+          nextUpdates.color = sanitizedColor ?? getLaneColor(lane.order);
+        }
+        Object.assign(lane, nextUpdates);
+        if (typeof nextUpdates.order === 'number') {
+          draft.lanes = normalizeLaneOrder(draft.lanes);
         }
         recalcAllLaneLayouts(draft);
         sortSteps(draft);
@@ -361,13 +375,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
 
     removeLane: (id) => {
       commit((draft) => {
-        draft.lanes = draft.lanes
-          .filter((lane) => lane.id !== id)
-          .map((lane, index) => ({
-            ...lane,
-            order: index,
-            color: getLaneColor(index),
-          }));
+        draft.lanes = normalizeLaneOrder(draft.lanes.filter((lane) => lane.id !== id));
         draft.steps = draft.steps.filter((step) => step.laneId !== id);
         draft.connections = draft.connections.filter((connection) =>
           draft.steps.some((step) => step.id === connection.sourceId || step.id === connection.targetId)
@@ -392,11 +400,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           .filter((item) => item.id !== id)
           .sort((a, b) => a.order - b.order);
         sorted.splice(bounded, 0, lane);
-        draft.lanes = sorted.map((item, index) => ({
-          ...item,
-          order: index,
-          color: getLaneColor(index),
-        }));
+        draft.lanes = normalizeLaneOrder(sorted);
         recalcAllLaneLayouts(draft);
         sortSteps(draft);
       }, 'reorder lane', {
