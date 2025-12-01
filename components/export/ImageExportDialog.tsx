@@ -26,7 +26,6 @@ import {
   HORIZONTAL_STEP_GAP,
   computeHorizontalLaneWidth,
   computeLaneHeight,
-  computeLaneWidth,
   deriveLanePositionX,
   deriveLanePositionY,
   LANE_PADDING,

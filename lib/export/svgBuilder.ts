@@ -4,7 +4,6 @@ import {
   HORIZONTAL_STEP_GAP,
   computeHorizontalLaneWidth,
   computeLaneHeight,
-  computeLaneWidth,
   deriveLanePositionX,
   deriveLanePositionY,
   LANE_PADDING,
@@ -239,15 +238,15 @@ const DESCRIPTION_TEXT_COLOR = '#64748b';
 
 const buildStepText = (step: Step) => {
   const centerX = step.x + step.width / 2;
-  
+
   // 改行文字列（\n）を実際の改行文字に変換してから分割
   const normalizeNewlines = (text: string): string => {
     return text.replace(/\\n/g, '\n').replace(/\\r\\n/g, '\r\n').replace(/\\r/g, '\r');
   };
-  
+
   const normalizedTitle = step.title && step.title.length > 0 ? normalizeNewlines(step.title) : '';
   const normalizedDescription = step.description ? normalizeNewlines(step.description) : '';
-  
+
   const titleLines = normalizedTitle ? normalizedTitle.split(/\r?\n/) : ['無題のステップ'];
   const descriptionLines = normalizedDescription ? normalizedDescription.split(/\r?\n/) : [];
 
@@ -535,9 +534,9 @@ const buildHorizontalDiagramSvg = (diagram: Diagram, options: BuildSvgOptions = 
       ...connection,
       control: connection.control
         ? {
-            x: shiftX(connection.control.x),
-            y: shiftY(connection.control.y),
-          }
+          x: shiftX(connection.control.x),
+          y: shiftY(connection.control.y),
+        }
         : null,
     };
 
@@ -661,9 +660,9 @@ export const buildDiagramSvg = (diagram: Diagram, options: BuildSvgOptions = {})
       ...connection,
       control: connection.control
         ? {
-            x: shiftX(connection.control.x),
-            y: shiftY(connection.control.y),
-          }
+          x: shiftX(connection.control.x),
+          y: shiftY(connection.control.y),
+        }
         : null,
     };
 
