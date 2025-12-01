@@ -19,11 +19,13 @@ interface StepNodeData {
   kind: StepKind;
   order: number;
   isConnecting?: boolean;
+  orientation: 'vertical' | 'horizontal';
 }
 
 export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
   const updateStep = useDiagramStore((state) => state.updateStep);
-  const { title, description, color, fillColor, laneColor, width, height, kind, onSelect, order } = data;
+  const { title, description, color, fillColor, laneColor, width, height, kind, onSelect, order, orientation } = data;
+  const isHorizontal = orientation === 'horizontal';
 
   const containerStyle: CSSProperties = {
     width,
@@ -59,9 +61,15 @@ export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
         contentStyle.zIndex = 1;
         return classNames(baseContentClass, stateClass, 'relative overflow-hidden');
       default:
-        contentStyle.borderLeftWidth = 6;
-        contentStyle.borderLeftColor = laneColor;
-        contentStyle.borderLeftStyle = 'solid';
+        if (isHorizontal) {
+          contentStyle.borderTopWidth = 6;
+          contentStyle.borderTopColor = laneColor;
+          contentStyle.borderTopStyle = 'solid';
+        } else {
+          contentStyle.borderLeftWidth = 6;
+          contentStyle.borderLeftColor = laneColor;
+          contentStyle.borderLeftStyle = 'solid';
+        }
         contentStyle.backgroundColor = fillColor || '#e0ebff';
         contentStyle.border = '1px solid #bae6fd';
         return classNames(baseContentClass, stateClass, 'rounded-lg');
@@ -126,7 +134,7 @@ export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
       className="react-flow__node-step relative flex h-full w-full focus:outline-none"
     >
       <div className="pointer-events-none absolute left-2 top-2 z-10 rounded bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm">
-        行 {order + 1}
+        {isHorizontal ? '列' : '行'} {order + 1}
       </div>
       <div className="relative h-full w-full">
         <div className={contentClass} style={contentStyle}>

@@ -37,9 +37,11 @@ const laneMeta = (lane: Lane) =>
 export const exportDiagramToMermaid = (diagram: Diagram): string => {
   const lines: string[] = [];
   const stepAliasMap = new Map<string, string>();
+  const orientation = diagram.orientation === 'horizontal' ? 'horizontal' : 'vertical';
+  const flowDirection = orientation === 'horizontal' ? 'LR' : 'TD';
 
   lines.push('```mermaid');
-  lines.push('flowchart TD');
+  lines.push(`flowchart ${flowDirection}`);
   lines.push('%% Swimlane Studio Export v1');
   lines.push(
     `%% diagram-meta:${JSON.stringify({
@@ -47,10 +49,12 @@ export const exportDiagramToMermaid = (diagram: Diagram): string => {
       title: diagram.title,
       createdAt: diagram.createdAt,
       updatedAt: diagram.updatedAt,
+      orientation,
     })}`
   );
 
   const persistedState = {
+    orientation,
     lanes: diagram.lanes,
     steps: diagram.steps,
     connections: diagram.connections,
@@ -77,7 +81,16 @@ export const exportDiagramToMermaid = (diagram: Diagram): string => {
     const laneSteps = diagram.steps
       .filter((step) => step.laneId === lane.id)
       .slice()
-      .sort((a, b) => a.y - b.y);
+      .sort((a, b) => {
+        if (orientation === 'horizontal') {
+          const deltaX = (a.x ?? 0) - (b.x ?? 0);
+          if (deltaX !== 0) return deltaX;
+          return a.order - b.order;
+        }
+        const deltaY = (a.y ?? 0) - (b.y ?? 0);
+        if (deltaY !== 0) return deltaY;
+        return a.order - b.order;
+      });
 
     laneSteps.forEach((step) => {
       const stepAlias = `S${stepCounter++}`;

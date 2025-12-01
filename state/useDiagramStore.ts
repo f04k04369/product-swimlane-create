@@ -1,11 +1,24 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid/non-secure';
 import { createEmptyDiagram, getLaneColor, STEP_DEFAULT_SIZE } from '@/lib/diagram/defaults';
-import { deriveStepX, resolveLaneIndex, rowIndexFromY, yForRow } from '@/lib/diagram/layout';
+import {
+  COLUMN_WIDTH,
+  HORIZONTAL_HEADER_WIDTH,
+  LANE_PADDING,
+  columnIndexFromX,
+  deriveLanePositionY,
+  deriveStepX,
+  horizontalColumnLeft,
+  resolveLaneIndex,
+  resolveLaneIndexByY,
+  rowIndexFromY,
+  yForRow,
+} from '@/lib/diagram/layout';
 import type {
   AuditEntry,
   Diagram,
   DiagramHistoryEntry,
+  DiagramOrientation,
   ElementID,
   Lane,
   PhaseGroup,
@@ -47,6 +60,7 @@ const KIND_FILL_COLORS: Record<StepKind, string> = {
 interface DiagramStore {
   diagram: Diagram;
   selection: SelectionState;
+  isOrientationCommitted: boolean;
   auditTrail: AuditEntry[];
   undoStack: DiagramHistoryEntry[];
   redoStack: DiagramHistoryEntry[];
@@ -55,6 +69,7 @@ interface DiagramStore {
   pendingInsert: { laneId: ElementID; row: number } | null;
   scrollToTopCounter: number;
   setDiagram: (diagram: Diagram, options?: { label?: string; preserveLayout?: boolean }) => void;
+  initializeDiagram: (orientation: DiagramOrientation) => void;
   addLane: (title?: string) => void;
   updateLane: (id: ElementID, updates: LaneUpdate) => void;
   removeLane: (id: ElementID) => void;
@@ -111,11 +126,7 @@ interface DiagramStore {
 
 const cloneDiagram = (diagram: Diagram): Diagram => structuredClone(diagram);
 
-const layoutLaneSteps = (
-  diagram: Diagram,
-  laneId: ElementID,
-  providedSteps?: Step[]
-) => {
+const layoutLaneSteps = (diagram: Diagram, laneId: ElementID, providedSteps?: Step[]) => {
   const lane = diagram.lanes.find((item) => item.id === laneId);
   if (!lane) return;
 
@@ -140,8 +151,17 @@ const layoutLaneSteps = (
 
       step.order = row;
       step.laneId = lane.id;
-      step.x = deriveStepX(diagram.lanes, lane.order, step.width);
-      step.y = yForRow(row, step.height);
+      if (diagram.orientation === 'horizontal') {
+        const laneTop = deriveLanePositionY(diagram.lanes, lane.order);
+        const laneThickness = lane.width;
+        const columnOffset = horizontalColumnLeft(row);
+        const centeredOffset = Math.max(0, (COLUMN_WIDTH - step.width) / 2);
+        step.x = HORIZONTAL_HEADER_WIDTH + LANE_PADDING + columnOffset + centeredOffset;
+        step.y = laneTop + Math.max(0, (laneThickness - step.height) / 2);
+      } else {
+        step.x = deriveStepX(diagram.lanes, lane.order, step.width);
+        step.y = yForRow(row, step.height);
+      }
     });
 };
 
@@ -157,6 +177,26 @@ const sortSteps = (diagram: Diagram) => {
     return a.order - b.order;
   });
 };
+
+const sanitizeLaneColor = (color?: string) => {
+  if (typeof color !== 'string') return undefined;
+  const trimmed = color.trim();
+  if (!trimmed) return undefined;
+  return trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+};
+
+const normalizeLaneOrder = (lanes: Lane[]) =>
+  lanes
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((lane, index) => {
+      const sanitizedColor = sanitizeLaneColor(lane.color);
+      return {
+        ...lane,
+        order: index,
+        color: sanitizedColor ?? getLaneColor(index),
+      };
+    });
 
 const removeStepFromDiagram = (diagram: Diagram, stepId: ElementID) => {
   const index = diagram.steps.findIndex((step) => step.id === stepId);
@@ -205,7 +245,8 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
   };
 
   return {
-    diagram: createEmptyDiagram(),
+    diagram: createEmptyDiagram('vertical'),
+    isOrientationCommitted: false,
     selection: { lanes: [], steps: [], connections: [], phases: [] },
     auditTrail: [],
     undoStack: [],
@@ -218,6 +259,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
     setDiagram: (diagram, options) => {
       const { label = 'import diagram', preserveLayout = false } = options ?? {};
       const snapshot = cloneDiagram(diagram);
+      snapshot.orientation = diagram.orientation ?? 'vertical';
       snapshot.updatedAt = new Date().toISOString();
       const originalLaneMeta = new Map(snapshot.lanes.map((lane) => [lane.id, { color: lane.color }])) ;
       const originalStepMeta = new Map(
@@ -248,16 +290,8 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           kind: step.kind ?? 'process',
           color: step.color ?? '#000000',
           fillColor: step.fillColor ?? KIND_FILL_COLORS[(step.kind ?? 'process') as StepKind] ?? '#e0ebff',
-          x:
-            preserveLayout && typeof step.x === 'number'
-              ? step.x
-              : targetLane
-              ? deriveStepX(snapshot.lanes, targetLane.order, width)
-              : step.x,
-          y:
-            preserveLayout && typeof step.y === 'number'
-              ? step.y
-              : yForRow(order, height),
+          x: preserveLayout && typeof step.x === 'number' ? step.x : 0,
+          y: preserveLayout && typeof step.y === 'number' ? step.y : 0,
         };
       });
       if (!preserveLayout) {
@@ -300,6 +334,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       sortSteps(snapshot);
       set({
         diagram: snapshot,
+        isOrientationCommitted: true,
         undoStack: [],
         redoStack: [],
         canUndo: false,
@@ -308,6 +343,29 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         pendingInsert: null,
       });
       get().log({ action: label, targetType: 'diagram', targetId: snapshot.id });
+    },
+
+    initializeDiagram: (orientation) => {
+      let initialized = false;
+      set((state) => {
+        if (state.isOrientationCommitted) {
+          return state;
+        }
+        initialized = true;
+        return {
+          diagram: createEmptyDiagram(orientation),
+          isOrientationCommitted: true,
+          selection: { lanes: [], steps: [], connections: [], phases: [] },
+          undoStack: [],
+          redoStack: [],
+          canUndo: false,
+          canRedo: false,
+          pendingInsert: null,
+        };
+      });
+      if (initialized) {
+        get().log({ action: 'initialize_diagram', targetType: 'diagram' });
+      }
     },
 
     addLane: (title = '新しいレーン') => {
@@ -321,11 +379,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           color: getLaneColor(order),
           width: 320,
         });
-        draft.lanes = draft.lanes.map((lane, index) => ({
-          ...lane,
-          order: index,
-          color: getLaneColor(index),
-        }));
+        draft.lanes = normalizeLaneOrder(draft.lanes);
         recalcAllLaneLayouts(draft);
         sortSteps(draft);
       }, 'add lane', {
@@ -338,16 +392,14 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       commit((draft) => {
         const lane = draft.lanes.find((item) => item.id === id);
         if (!lane) return;
-        Object.assign(lane, updates);
-        if (typeof updates.order === 'number') {
-          draft.lanes = draft.lanes
-            .slice()
-            .sort((a, b) => a.order - b.order)
-            .map((laneItem, index) => ({
-              ...laneItem,
-              order: index,
-              color: getLaneColor(index),
-            }));
+        const nextUpdates = { ...updates };
+        if (typeof nextUpdates.color === 'string') {
+          const sanitizedColor = sanitizeLaneColor(nextUpdates.color);
+          nextUpdates.color = sanitizedColor ?? getLaneColor(lane.order);
+        }
+        Object.assign(lane, nextUpdates);
+        if (typeof nextUpdates.order === 'number') {
+          draft.lanes = normalizeLaneOrder(draft.lanes);
         }
         recalcAllLaneLayouts(draft);
         sortSteps(draft);
@@ -361,13 +413,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
 
     removeLane: (id) => {
       commit((draft) => {
-        draft.lanes = draft.lanes
-          .filter((lane) => lane.id !== id)
-          .map((lane, index) => ({
-            ...lane,
-            order: index,
-            color: getLaneColor(index),
-          }));
+        draft.lanes = normalizeLaneOrder(draft.lanes.filter((lane) => lane.id !== id));
         draft.steps = draft.steps.filter((step) => step.laneId !== id);
         draft.connections = draft.connections.filter((connection) =>
           draft.steps.some((step) => step.id === connection.sourceId || step.id === connection.targetId)
@@ -392,11 +438,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           .filter((item) => item.id !== id)
           .sort((a, b) => a.order - b.order);
         sorted.splice(bounded, 0, lane);
-        draft.lanes = sorted.map((item, index) => ({
-          ...item,
-          order: index,
-          color: getLaneColor(index),
-        }));
+        draft.lanes = normalizeLaneOrder(sorted);
         recalcAllLaneLayouts(draft);
         sortSteps(draft);
       }, 'reorder lane', {
@@ -438,18 +480,11 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           color: KIND_COLORS[kind],
           fillColor: KIND_FILL_COLORS[kind],
           kind,
-          x: deriveStepX(draft.lanes, lane.order, dimensions.width),
-          y: yForRow(insertRow, dimensions.height),
+          x: 0,
+          y: 0,
         };
         draft.steps.push(newStep);
-
-        draft.steps
-          .filter((step) => step.laneId === lane.id)
-          .forEach((step) => {
-            step.x = deriveStepX(draft.lanes, lane.order, step.width);
-            step.y = yForRow(step.order, step.height);
-          });
-
+        layoutLaneSteps(draft, lane.id);
         sortSteps(draft);
         createdId = newStep.id;
       }, 'add step', {
@@ -508,7 +543,11 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         if (!existing) return;
         const previousLaneId = existing.laneId;
         const centerX = x + existing.width / 2;
-        const laneIndex = resolveLaneIndex(draft.lanes, centerX);
+        const centerY = y + existing.height / 2;
+        const laneIndex =
+          draft.orientation === 'horizontal'
+            ? resolveLaneIndexByY(draft.lanes, centerY)
+            : resolveLaneIndex(draft.lanes, centerX);
         const targetLane = draft.lanes[laneIndex] ?? draft.lanes.find((lane) => lane.id === previousLaneId);
         if (!targetLane) {
           draft.steps.push(existing);
@@ -517,7 +556,13 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         existing.laneId = targetLane.id;
         const laneSteps = draft.steps.filter((step) => step.laneId === targetLane.id);
         const occupiedRows = new Set(laneSteps.map((step) => step.order));
-        let desiredRow = Math.max(0, rowIndexFromY(y, existing.height));
+        let desiredRow =
+          draft.orientation === 'horizontal'
+            ? Math.max(
+                0,
+                columnIndexFromX(x - HORIZONTAL_HEADER_WIDTH, existing.width)
+              )
+            : Math.max(0, rowIndexFromY(y, existing.height));
         while (occupiedRows.has(desiredRow)) {
           desiredRow += 1;
         }
@@ -878,10 +923,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
             });
           }
 
-          laneSteps.forEach((step) => {
-            step.x = deriveStepX(draft.lanes, lane.order, step.width);
-            step.y = yForRow(step.order, step.height);
-          });
+          layoutLaneSteps(draft, targetLaneId, laneSteps);
         });
         sortSteps(draft);
         draft.phaseGroups.forEach((phase) => {
@@ -1029,13 +1071,16 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
     },
 
     reset: () => {
+      const orientation = get().diagram.orientation ?? 'vertical';
       set({
-        diagram: createEmptyDiagram(),
+        diagram: createEmptyDiagram(orientation),
+        isOrientationCommitted: true,
         undoStack: [],
         redoStack: [],
         canUndo: false,
         canRedo: false,
         selection: { lanes: [], steps: [], connections: [], phases: [] },
+        pendingInsert: null,
       });
       get().log({ action: 'reset', targetType: 'diagram' });
     },

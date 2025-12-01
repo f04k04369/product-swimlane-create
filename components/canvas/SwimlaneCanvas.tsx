@@ -20,7 +20,20 @@ import { PhaseLabel } from '@/components/canvas/PhaseLabelNode';
 import { StepNode } from '@/components/canvas/StepNode';
 import { KeyEdge, type KeyEdgeData } from '@/components/canvas/KeyEdge';
 import { useDiagramStore } from '@/state/useDiagramStore';
-import { computeLaneHeight, deriveLanePositionX, LANE_PADDING, LANE_WIDTH, ROW_HEIGHT, rowIndexFromY } from '@/lib/diagram/layout';
+import {
+  COLUMN_WIDTH,
+  HORIZONTAL_HEADER_WIDTH,
+  HORIZONTAL_STEP_GAP,
+  computeHorizontalLaneWidth,
+  computeLaneHeight,
+  deriveLanePositionX,
+  deriveLanePositionY,
+  LANE_PADDING,
+  LANE_WIDTH,
+  ROW_HEIGHT,
+  columnIndexFromX,
+  rowIndexFromY,
+} from '@/lib/diagram/layout';
 import { PHASE_GAP_TO_LANE, PHASE_LABEL_MIN_LEFT, PHASE_LABEL_WIDTH } from '@/lib/diagram/constants';
 import type { PhaseGroup } from '@/lib/diagram/types';
 
@@ -127,16 +140,27 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
 
   const sortedLanes = useMemo(() => diagram.lanes.slice().sort((a, b) => a.order - b.order), [diagram.lanes]);
 
-  const laneHeights = useMemo(() => {
+  const orientation = diagram.orientation ?? 'vertical';
+  const isHorizontal = orientation === 'horizontal';
+  const rowSize = isHorizontal ? COLUMN_WIDTH + HORIZONTAL_STEP_GAP : ROW_HEIGHT;
+
+  const laneSpans = useMemo(() => {
     const map = new Map<string, number>();
     diagram.lanes.forEach((lane) => {
       const laneSteps = diagram.steps.filter((step) => step.laneId === lane.id);
-      map.set(lane.id, computeLaneHeight(laneSteps));
+      map.set(
+        lane.id,
+        isHorizontal ? computeHorizontalLaneWidth(laneSteps) : computeLaneHeight(laneSteps)
+      );
     });
     return map;
-  }, [diagram.lanes, diagram.steps]);
+  }, [diagram.lanes, diagram.steps, isHorizontal]);
 
-  const minimumHeight = LANE_PADDING * 2 + ROW_HEIGHT;
+  const minimumSpan = isHorizontal ? rowSize : LANE_PADDING * 2 + rowSize;
+
+  const horizontalHeaderWidth = HORIZONTAL_HEADER_WIDTH;
+  const laneContentOffsetX = isHorizontal ? horizontalHeaderWidth : 0;
+  const lanePaddingValue = LANE_PADDING;
 
   const handleLaneRowSelect = useCallback(
     (laneId: string, row: number) => {
@@ -147,9 +171,34 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     [isSpacePanning, setPendingInsert, setSelection]
   );
 
-  const laneNodes: Node[] = useMemo(
-    () =>
-      sortedLanes.map((lane) => ({
+  const laneNodes: Node[] = useMemo(() => {
+    return sortedLanes.map((lane) => {
+      const primarySpan = laneSpans.get(lane.id) ?? minimumSpan;
+      const isSelected = selection.lanes.includes(lane.id);
+      if (isHorizontal) {
+        return {
+          id: `lane-${lane.id}`,
+          type: 'lane',
+          position: { x: laneContentOffsetX, y: deriveLanePositionY(sortedLanes, lane.order) },
+          data: {
+            id: lane.id,
+            title: lane.title,
+            color: lane.color,
+            height: lane.width,
+            width: primarySpan,
+            isSelected,
+            pendingRow: pendingInsert?.laneId === lane.id ? pendingInsert.row : null,
+          rowHeight: rowSize,
+          lanePadding: lanePaddingValue,
+            orientation,
+            onRowHandleClick: handleLaneRowSelect,
+          },
+          selectable: false,
+          draggable: false,
+          zIndex: 0,
+        } satisfies Node;
+      }
+      return {
         id: `lane-${lane.id}`,
         type: 'lane',
         position: { x: deriveLanePositionX(sortedLanes, lane.order), y: 0 },
@@ -157,24 +206,57 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
           id: lane.id,
           title: lane.title,
           color: lane.color,
-          height: laneHeights.get(lane.id) ?? minimumHeight,
+          height: primarySpan,
           width: lane.width,
-          isSelected: selection.lanes.includes(lane.id),
+          isSelected,
           pendingRow: pendingInsert?.laneId === lane.id ? pendingInsert.row : null,
-          rowHeight: ROW_HEIGHT,
-          lanePadding: LANE_PADDING,
+          rowHeight: rowSize,
+          lanePadding: lanePaddingValue,
+          orientation,
           onRowHandleClick: handleLaneRowSelect,
         },
         selectable: false,
         draggable: false,
         zIndex: 0,
-      })),
-    [handleLaneRowSelect, laneHeights, minimumHeight, pendingInsert, sortedLanes, selection.lanes]
-  );
+      } satisfies Node;
+    });
+  }, [
+    handleLaneRowSelect,
+    isHorizontal,
+    laneContentOffsetX,
+    laneSpans,
+    minimumSpan,
+    orientation,
+    pendingInsert,
+    lanePaddingValue,
+    rowSize,
+    selection.lanes,
+    sortedLanes,
+  ]);
 
-  const laneHeaderNodes: Node[] = useMemo(
-    () =>
-      sortedLanes.map((lane) => ({
+  const laneHeaderNodes: Node[] = useMemo(() => {
+    return sortedLanes.map((lane) => {
+      if (isHorizontal) {
+        return {
+          id: `lane-header-${lane.id}`,
+          type: 'laneHeader',
+          position: { x: 0, y: deriveLanePositionY(sortedLanes, lane.order) },
+          data: {
+            id: lane.id,
+            title: lane.title,
+            color: lane.color,
+            width: horizontalHeaderWidth,
+            height: lane.width,
+            isSelected: selection.lanes.includes(lane.id),
+            orientation,
+          },
+          selectable: false,
+          draggable: false,
+          focusable: false,
+          zIndex: 10,
+        } satisfies Node;
+      }
+      return {
         id: `lane-header-${lane.id}`,
         type: 'laneHeader',
         position: { x: deriveLanePositionX(sortedLanes, lane.order), y: 0 },
@@ -183,15 +265,17 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
           title: lane.title,
           color: lane.color,
           width: lane.width,
+          height: ROW_HEIGHT,
           isSelected: selection.lanes.includes(lane.id),
+          orientation,
         },
         selectable: false,
         draggable: false,
         focusable: false,
         zIndex: 10,
-      })),
-    [selection.lanes, sortedLanes]
-  );
+      } satisfies Node;
+    });
+  }, [horizontalHeaderWidth, isHorizontal, orientation, selection.lanes, sortedLanes]);
 
   const projectPointer = useCallback(
     (clientX: number, clientY: number) => {
@@ -203,12 +287,25 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
   );
 
   const selectLaneRow = useCallback(
-    (laneId: string, diagramY: number) => {
-      const row = Math.max(0, Math.floor((diagramY - LANE_PADDING) / ROW_HEIGHT));
-      handleLaneRowSelect(laneId, row);
-      setSelectedPhaseRow(row);
+    (laneId: string, position: { x: number; y: number }) => {
+      if (isHorizontal) {
+        if (position.x < laneContentOffsetX) {
+          handleLaneRowSelect(laneId, 0);
+          setSelectedPhaseRow(0);
+          return;
+        }
+        const base = position.x - laneContentOffsetX - lanePaddingValue;
+        const column = Math.max(0, Math.floor(base / rowSize));
+        handleLaneRowSelect(laneId, column);
+        setSelectedPhaseRow(column);
+      } else {
+        const base = position.y;
+        const row = Math.max(0, Math.floor((base - lanePaddingValue) / rowSize));
+        handleLaneRowSelect(laneId, row);
+        setSelectedPhaseRow(row);
+      }
     },
-    [handleLaneRowSelect]
+    [handleLaneRowSelect, isHorizontal, laneContentOffsetX, lanePaddingValue, rowSize]
   );
 
   const stepNodes: Node[] = useMemo(
@@ -233,6 +330,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
             height: step.height,
             kind: step.kind,
             order: step.order,
+            orientation,
           },
           width: step.width,
           height: step.height,
@@ -242,16 +340,54 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
           selected: selection.steps.includes(step.id),
         } satisfies Node;
       }),
-    [diagram.steps, laneMap, selection.steps, setSelection]
+    [diagram.steps, laneMap, orientation, selection.steps, setSelection]
   );
 
-  const canvasHeight = useMemo(() => {
-    if (!diagram.lanes.length) return minimumHeight;
-    return Math.max(...diagram.lanes.map((lane) => laneHeights.get(lane.id) ?? minimumHeight));
-  }, [diagram.lanes, laneHeights, minimumHeight]);
+  const canvasPrimarySpan = useMemo(() => {
+    if (!diagram.lanes.length) return minimumSpan;
+    return Math.max(...diagram.lanes.map((lane) => laneSpans.get(lane.id) ?? minimumSpan));
+  }, [diagram.lanes, laneSpans, minimumSpan]);
+
+  const contentPrimarySpan = useMemo(() => {
+    if (!diagram.steps.length) return canvasPrimarySpan;
+    if (isHorizontal) {
+      const maxRight =
+        Math.max(
+          ...diagram.steps.map((step) => step.x + step.width - laneContentOffsetX)
+        ) || 0;
+      return Math.max(canvasPrimarySpan, maxRight + HORIZONTAL_STEP_GAP);
+    }
+    const maxCoordinate = Math.max(...diagram.steps.map((step) => step.y + step.height));
+    return Math.max(canvasPrimarySpan, maxCoordinate + LANE_PADDING);
+  }, [
+    canvasPrimarySpan,
+    diagram.steps,
+    isHorizontal,
+    laneContentOffsetX,
+  ]);
+
+  const diagramPrimarySpan = useMemo(
+    () => Math.max(canvasPrimarySpan, contentPrimarySpan),
+    [canvasPrimarySpan, contentPrimarySpan]
+  );
 
   const laneArea = useMemo(() => {
     if (!sortedLanes.length) return null;
+    if (isHorizontal) {
+      const firstOrder = sortedLanes[0].order;
+      const lastOrder = sortedLanes[sortedLanes.length - 1].order;
+      const top = deriveLanePositionY(sortedLanes, firstOrder);
+      const lastLane = sortedLanes[sortedLanes.length - 1];
+      const bottom = deriveLanePositionY(sortedLanes, lastOrder) + lastLane.width;
+      const height = Math.max(bottom - top, LANE_WIDTH);
+      const width = Math.max(diagramPrimarySpan, minimumSpan);
+      return {
+        left: laneContentOffsetX,
+        top,
+        width,
+        height,
+      };
+    }
     const firstOrder = sortedLanes[0].order;
     const lastOrder = sortedLanes[sortedLanes.length - 1].order;
     const left = Math.max(0, deriveLanePositionX(sortedLanes, firstOrder) - LANE_PADDING * 0.5);
@@ -259,17 +395,26 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     const right = deriveLanePositionX(sortedLanes, lastOrder) + lastLane.width + LANE_PADDING * 0.5;
     return {
       left,
+      top: 0,
       width: Math.max(right - left, LANE_WIDTH + LANE_PADDING),
+      height: diagramPrimarySpan,
     };
-  }, [sortedLanes]);
+  }, [diagramPrimarySpan, isHorizontal, laneContentOffsetX, minimumSpan, sortedLanes]);
 
-  const contentHeight = useMemo(() => {
-    if (!diagram.steps.length) return canvasHeight;
-    const maxBottom = Math.max(...diagram.steps.map((step) => step.y + step.height));
-    return Math.max(canvasHeight, maxBottom + LANE_PADDING);
-  }, [canvasHeight, diagram.steps]);
+  const canvasMinHeight = useMemo(() => {
+    if (isHorizontal) {
+      const baseHeight = (laneArea?.top ?? 0) + (laneArea?.height ?? 0);
+      return Math.max(baseHeight, diagramPrimarySpan);
+    }
+    return diagramPrimarySpan;
+  }, [diagramPrimarySpan, isHorizontal, laneArea]);
 
-  const maxRow = useMemo(() => Math.max(0, Math.ceil((contentHeight - LANE_PADDING) / ROW_HEIGHT) - 1), [contentHeight]);
+  const maxRow = useMemo(() => {
+    if (isHorizontal) {
+      return Math.max(0, Math.ceil(contentPrimarySpan / rowSize) - 1);
+    }
+    return Math.max(0, Math.ceil((contentPrimarySpan - LANE_PADDING) / rowSize) - 1);
+  }, [contentPrimarySpan, isHorizontal, rowSize]);
 
   const laneAreaLeft = laneArea?.left ?? 16;
 
@@ -278,9 +423,14 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       if (typeof step.order === 'number' && Number.isFinite(step.order)) {
         return Math.max(0, Math.round(step.order));
       }
-      return Math.max(0, rowIndexFromY(step.y, step.height));
+      return Math.max(
+        0,
+        isHorizontal
+          ? columnIndexFromX(step.x - horizontalHeaderWidth, step.width)
+          : rowIndexFromY(step.y, step.height)
+      );
     });
-  }, [diagram.steps]);
+  }, [diagram.steps, horizontalHeaderWidth, isHorizontal]);
 
   const maxStepRow = useMemo(() => {
     if (!stepRowIndices.length) return -1;
@@ -301,7 +451,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     return Math.max(PHASE_LABEL_MIN_LEFT, firstLaneLeft - PHASE_LABEL_WIDTH - PHASE_GAP_TO_LANE);
   }, [firstLaneLeft, laneAreaLeft, sortedLanes.length]);
 
-  const phaseGroups = useMemo(() => diagram.phaseGroups ?? [], [diagram.phaseGroups]);
+  const phaseGroups = useMemo(() => (isHorizontal ? [] : diagram.phaseGroups ?? []), [diagram.phaseGroups, isHorizontal]);
 
   const maxRowLimit = useMemo(() => Math.max(maxRow, maxStepRow), [maxRow, maxStepRow]);
 
@@ -322,12 +472,10 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
 
   const phaseAddButtonY = useMemo(() => {
     if (phaseMaxRow >= 0) {
-      return LANE_PADDING + (phaseMaxRow + 1) * ROW_HEIGHT + 16;
+      return LANE_PADDING + (phaseMaxRow + 1) * rowSize + 16;
     }
     return LANE_PADDING - 64;
-  }, [phaseMaxRow]);
-
-  const diagramHeight = useMemo(() => Math.max(canvasHeight, contentHeight), [canvasHeight, contentHeight]);
+  }, [phaseMaxRow, rowSize]);
 
   const [viewportState, setViewportState] = useState<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
 
@@ -370,28 +518,32 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     (clientX: number, clientY: number) => {
       const projected = projectPointer(clientX, clientY);
       if (!projected) return 0;
+      if (isHorizontal) {
+        const diagramX = projected.x - laneContentOffsetX - lanePaddingValue;
+        const column = Math.floor(diagramX / rowSize);
+        return Number.isFinite(column) ? Math.max(0, column) : 0;
+      }
       const diagramY = projected.y;
-      const row = Math.floor((diagramY - LANE_PADDING) / ROW_HEIGHT);
-      return Number.isFinite(row) ? row : 0;
+      const row = Math.floor((diagramY - lanePaddingValue) / rowSize);
+      return Number.isFinite(row) ? Math.max(0, row) : 0;
     },
-    [projectPointer]
+    [isHorizontal, laneContentOffsetX, lanePaddingValue, projectPointer, rowSize]
   );
 
   const laneBackground = useMemo(() => {
     if (!laneArea || !sortedLanes.length) return [];
-    const height = diagramHeight;
     return [
       {
         id: 'lane-background',
         type: 'laneBackground',
-        position: { x: laneArea.left, y: 0 },
-        data: { width: laneArea.width, height },
+        position: { x: laneArea.left, y: laneArea.top ?? 0 },
+        data: { width: laneArea.width, height: laneArea.height ?? diagramPrimarySpan },
         selectable: false,
         draggable: false,
         zIndex: -1,
       } satisfies Node,
     ];
-  }, [diagramHeight, laneArea, sortedLanes.length]);
+  }, [diagramPrimarySpan, laneArea, sortedLanes.length]);
 
   const openPhaseEditor = useCallback(
     (phase: PhaseGroup) => {
@@ -457,7 +609,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
   );
 
   const renderPhaseOverlay = useCallback(() => {
-    if (!laneArea) return null;
+    if (!laneArea || isHorizontal) return null;
     return (
       <div
         className="absolute z-20"
@@ -471,8 +623,8 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         }}
       >
         {phaseGroups.map((phase) => {
-          const top = LANE_PADDING + phase.startRow * ROW_HEIGHT;
-          const height = Math.max(ROW_HEIGHT, (phase.endRow - phase.startRow + 1) * ROW_HEIGHT);
+          const top = LANE_PADDING + phase.startRow * rowSize;
+          const height = Math.max(rowSize, (phase.endRow - phase.startRow + 1) * rowSize);
           const isActive = selectedPhaseIds.includes(phase.id) || phaseResize?.id === phase.id;
           return (
             <div
@@ -485,6 +637,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
                 title={phase.title}
                 width={PHASE_LABEL_WIDTH}
                 height={height}
+                orientation={orientation}
                 isActive={isActive}
                 onEdit={() => openPhaseEditor(phase)}
                 onResizeStart={handlePhaseResizeStart}
@@ -522,7 +675,25 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         </div>
       </div>
     );
-  }, [canAddPhase, handleAddPhase, handlePhaseResizeStart, laneArea, phaseAddButtonY, phaseGroups, phaseLabelX, phaseResize?.id, phaseAddMessage, viewportState.x, viewportState.y, viewportState.zoom, openPhaseEditor, selectedPhaseIds]);
+  }, [
+    canAddPhase,
+    handleAddPhase,
+    handlePhaseResizeStart,
+    isHorizontal,
+    laneArea,
+    orientation,
+    phaseAddButtonY,
+    phaseGroups,
+    phaseLabelX,
+    phaseResize?.id,
+    phaseAddMessage,
+    rowSize,
+    viewportState.x,
+    viewportState.y,
+    viewportState.zoom,
+    openPhaseEditor,
+    selectedPhaseIds,
+  ]);
 
   const handleViewportChange = useCallback<OnMove>((_event, viewport) => {
     setViewportState(viewport);
@@ -687,19 +858,35 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         return;
       }
       const lane = sortedLanes.find((candidate) => {
+        if (isHorizontal) {
+          const yStart = deriveLanePositionY(sortedLanes, candidate.order);
+          const yEnd = yStart + candidate.width;
+          return projected.y >= yStart && projected.y <= yEnd;
+        }
         const xStart = deriveLanePositionX(sortedLanes, candidate.order);
         const xEnd = xStart + candidate.width;
         return projected.x >= xStart && projected.x <= xEnd;
       });
       if (lane) {
-        selectLaneRow(lane.id, projected.y);
+        selectLaneRow(lane.id, projected);
       } else {
         clearSelection();
         clearPendingInsert();
         setSelectedPhaseRow(null);
       }
     },
-    [clearPendingInsert, clearSelection, isSpacePanning, projectPointer, selectLaneRow, sortedLanes]
+    [
+      clearPendingInsert,
+      clearSelection,
+      isHorizontal,
+      isSpacePanning,
+      laneContentOffsetX,
+      laneSpans,
+      minimumSpan,
+      projectPointer,
+      selectLaneRow,
+      sortedLanes,
+    ]
   );
 
   const handleNodeClick = useCallback(
@@ -711,7 +898,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         if (!laneId) return;
         const projected = projectPointer(event.clientX, event.clientY);
         if (!projected) return;
-        selectLaneRow(laneId, projected.y);
+        selectLaneRow(laneId, projected);
         return;
       }
       if (node.type !== 'step') return;
@@ -727,14 +914,14 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       ref={canvasRef}
       className="relative flex-1 bg-slate-50"
       style={{
-        minHeight: diagramHeight,
+        minHeight: canvasMinHeight,
         cursor: isSpacePanning ? 'grab' : 'default',
       }}
     >
       {renderPhaseOverlay()}
       <ReactFlow
         className={`h-full w-full ${isSpacePanning ? 'cursor-grab' : 'cursor-default'}`}
-        style={{ minHeight: diagramHeight, zIndex: 1 }}
+        style={{ minHeight: canvasMinHeight, zIndex: 1 }}
         onConnectStart={() => {}}
         onConnectEnd={() => {}}
         connectOnClick

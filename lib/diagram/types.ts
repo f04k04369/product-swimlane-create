@@ -48,9 +48,12 @@ export interface PhaseGroup {
   endRow: number;
 }
 
+export type DiagramOrientation = 'vertical' | 'horizontal';
+
 export interface Diagram {
   id: string;
   title: string;
+  orientation: DiagramOrientation;
   lanes: Lane[];
   steps: Step[];
   connections: Connection[];

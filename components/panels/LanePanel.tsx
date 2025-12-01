@@ -89,6 +89,14 @@ export const LanePanel = () => {
               value={lane.title}
               onChange={(event) => updateLane(lane.id, { title: event.target.value })}
             />
+            <label className="mt-2 block text-xs font-medium text-slate-500">タイトルカラー</label>
+            <input
+              className={`${inputStyles} h-10 cursor-pointer`}
+              type="color"
+              value={lane.color || '#0ea5e9'}
+              onChange={(event) => updateLane(lane.id, { color: event.target.value })}
+              aria-label={`${lane.title || `レーン ${lane.order + 1}`}のタイトルカラー`}
+            />
             <label className="mt-2 block text-xs font-medium text-slate-500">説明</label>
             <textarea
               className={`${inputStyles} min-h-[60px] resize-none`}
