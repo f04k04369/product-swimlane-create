@@ -160,22 +160,40 @@ export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
         </div>
       </div>
       {kind !== 'end' && (
-        <Handle
-          type="source"
-          id="bottom"
-          position={Position.Bottom}
-          className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
-          style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
-        />
+        <>
+          <Handle
+            type="source"
+            id="bottom"
+            position={Position.Bottom}
+            className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
+            style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
+          />
+          <Handle
+            type="target"
+            id="bottom-target"
+            position={Position.Bottom}
+            className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
+            style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
+          />
+        </>
       )}
       {kind !== 'start' && (
-        <Handle
-          type="target"
-          id="top"
-          position={Position.Top}
-          className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
-          style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
-        />
+        <>
+          <Handle
+            type="target"
+            id="top"
+            position={Position.Top}
+            className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
+            style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
+          />
+          <Handle
+            type="source"
+            id="top-source"
+            position={Position.Top}
+            className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
+            style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
+          />
+        </>
       )}
       {kind !== 'start' && (
         <Handle

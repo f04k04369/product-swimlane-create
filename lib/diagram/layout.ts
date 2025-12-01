@@ -64,13 +64,15 @@ export const deriveLanePositionY = (lanes: Lane[], order: number) => {
 
 export const columnLeftAt = (column: number) => LANE_PADDING + column * COLUMN_WIDTH;
 
-export const horizontalColumnLeft = (column: number) => column * (COLUMN_WIDTH + HORIZONTAL_STEP_GAP);
+export const HORIZONTAL_COLUMN_WIDTH = 120; // COLUMN_WIDTH / 2
+
+export const horizontalColumnLeft = (column: number) => column * HORIZONTAL_COLUMN_WIDTH;
 
 export const xForColumn = (column: number, stepWidth: number) =>
   columnLeftAt(column) + Math.max(0, (COLUMN_WIDTH - stepWidth) / 2);
 
 export const columnIndexFromX = (value: number, stepWidth: number) => {
-  const stride = COLUMN_WIDTH + HORIZONTAL_STEP_GAP;
+  const stride = HORIZONTAL_COLUMN_WIDTH;
   const adjusted = value - LANE_PADDING + stepWidth / 2;
   if (adjusted <= 0) return 0;
   return Math.floor(adjusted / stride);
@@ -126,10 +128,10 @@ export const computeLaneWidth = (laneSteps: Step[]): number => {
 };
 
 export const computeHorizontalLaneWidth = (laneSteps: Step[]): number => {
-  const stride = COLUMN_WIDTH + HORIZONTAL_STEP_GAP;
-  const minWidth = LANE_PADDING * 2 + stride;
+
+  const minWidth = LANE_PADDING * 2 + COLUMN_WIDTH; // Ensure at least one full column width
   if (!laneSteps.length) return minWidth;
   const maxColumn = laneSteps.reduce((acc, step) => Math.max(acc, Math.max(0, Math.round(step.order))), 0);
   const lastStart = horizontalColumnLeft(maxColumn);
-  return Math.max(minWidth, LANE_PADDING * 2 + lastStart + stride);
+  return Math.max(minWidth, LANE_PADDING * 2 + lastStart + COLUMN_WIDTH);
 };

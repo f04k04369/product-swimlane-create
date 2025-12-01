@@ -54,7 +54,11 @@ export const LanePanel = () => {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => reorderLane(lane.id, index - 1)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    reorderLane(lane.id, index - 1);
+                  }}
                   disabled={index === 0}
                   aria-label="上へ移動"
                 >
@@ -64,7 +68,11 @@ export const LanePanel = () => {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => reorderLane(lane.id, index + 1)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    reorderLane(lane.id, index + 1);
+                  }}
                   disabled={index === laneCount - 1}
                   aria-label="下へ移動"
                 >

@@ -22,6 +22,7 @@ import { KeyEdge, type KeyEdgeData } from '@/components/canvas/KeyEdge';
 import { useDiagramStore } from '@/state/useDiagramStore';
 import {
   COLUMN_WIDTH,
+  HORIZONTAL_COLUMN_WIDTH,
   HORIZONTAL_HEADER_WIDTH,
   HORIZONTAL_STEP_GAP,
   computeHorizontalLaneWidth,
@@ -142,7 +143,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
 
   const orientation = diagram.orientation ?? 'vertical';
   const isHorizontal = orientation === 'horizontal';
-  const rowSize = isHorizontal ? COLUMN_WIDTH + HORIZONTAL_STEP_GAP : ROW_HEIGHT;
+  const rowSize = isHorizontal ? HORIZONTAL_COLUMN_WIDTH : ROW_HEIGHT;
 
   const laneSpans = useMemo(() => {
     const map = new Map<string, number>();
@@ -189,6 +190,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
             isSelected,
             pendingRow: pendingInsert?.laneId === lane.id ? pendingInsert.row : null,
             rowHeight: rowSize,
+            highlightWidth: COLUMN_WIDTH,
             lanePadding: lanePaddingValue,
             orientation,
             onRowHandleClick: handleLaneRowSelect,
@@ -652,8 +654,8 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
           <button
             type="button"
             className={`pointer-events-auto flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed px-2 py-4 text-xs font-semibold shadow-sm transition-all duration-150 ease-out ${canAddPhase
-                ? 'border-blue-400 bg-white/70 text-blue-600 hover:-translate-y-[1px] hover:bg-blue-50'
-                : 'cursor-not-allowed border-slate-300 bg-white/40 text-slate-400'
+              ? 'border-blue-400 bg-white/70 text-blue-600 hover:-translate-y-[1px] hover:bg-blue-50'
+              : 'cursor-not-allowed border-slate-300 bg-white/40 text-slate-400'
               }`}
             onClick={() => {
               if (!canAddPhase) return;
