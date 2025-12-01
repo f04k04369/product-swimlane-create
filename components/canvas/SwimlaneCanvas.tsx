@@ -188,8 +188,8 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
             width: primarySpan,
             isSelected,
             pendingRow: pendingInsert?.laneId === lane.id ? pendingInsert.row : null,
-          rowHeight: rowSize,
-          lanePadding: lanePaddingValue,
+            rowHeight: rowSize,
+            lanePadding: lanePaddingValue,
             orientation,
             onRowHandleClick: handleLaneRowSelect,
           },
@@ -651,11 +651,10 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         >
           <button
             type="button"
-            className={`pointer-events-auto flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed px-2 py-4 text-xs font-semibold shadow-sm transition-all duration-150 ease-out ${
-              canAddPhase
+            className={`pointer-events-auto flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed px-2 py-4 text-xs font-semibold shadow-sm transition-all duration-150 ease-out ${canAddPhase
                 ? 'border-blue-400 bg-white/70 text-blue-600 hover:-translate-y-[1px] hover:bg-blue-50'
                 : 'cursor-not-allowed border-slate-300 bg-white/40 text-slate-400'
-            }`}
+              }`}
             onClick={() => {
               if (!canAddPhase) return;
               handleAddPhase();
@@ -880,9 +879,6 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       clearSelection,
       isHorizontal,
       isSpacePanning,
-      laneContentOffsetX,
-      laneSpans,
-      minimumSpan,
       projectPointer,
       selectLaneRow,
       sortedLanes,
@@ -922,8 +918,8 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       <ReactFlow
         className={`h-full w-full ${isSpacePanning ? 'cursor-grab' : 'cursor-default'}`}
         style={{ minHeight: canvasMinHeight, zIndex: 1 }}
-        onConnectStart={() => {}}
-        onConnectEnd={() => {}}
+        onConnectStart={() => { }}
+        onConnectEnd={() => { }}
         connectOnClick
         nodes={nodes}
         edges={edges}

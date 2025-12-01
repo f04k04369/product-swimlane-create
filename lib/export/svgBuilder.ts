@@ -480,17 +480,12 @@ const buildHorizontalDiagramSvg = (diagram: Diagram, options: BuildSvgOptions = 
     const fontSize = 18;
     const lineSpacing = 4;
 
-    // Calculate total height of the text block (which will be width when rotated)
-    const totalTextHeight = lines.length * fontSize + (lines.length - 1) * lineSpacing;
+
 
     // We want to center the text block at (textX, textY) and then rotate it 90 degrees.
     // The rotation happens around the point (textX, textY).
 
     svgParts.push(`<g transform="rotate(-90, ${textX}, ${textY})">`);
-
-    let currentY = textY - totalTextHeight / 2 + fontSize / 2; // Start Y for the first line, centered vertically relative to the group center before rotation (which corresponds to horizontal centering after rotation? No wait.)
-    // Actually, if we rotate 90 degrees around center, X becomes Y and Y becomes -X relative to the center.
-    // Let's just draw the text centered at (textX, textY) as if it was horizontal, and then rotate the whole group.
 
     // If we draw text at (textX, textY) with text-anchor="middle" and dominant-baseline="middle", a single line is centered.
     // For multiple lines, we need to offset them.
