@@ -128,7 +128,7 @@ export const computeLaneWidth = (laneSteps: Step[]): number => {
 };
 
 export const computeHorizontalLaneWidth = (laneSteps: Step[]): number => {
-  const stride = HORIZONTAL_COLUMN_WIDTH;
+
   const minWidth = LANE_PADDING * 2 + COLUMN_WIDTH; // Ensure at least one full column width
   if (!laneSteps.length) return minWidth;
   const maxColumn = laneSteps.reduce((acc, step) => Math.max(acc, Math.max(0, Math.round(step.order))), 0);
