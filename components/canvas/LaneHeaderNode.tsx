@@ -49,29 +49,20 @@ export const LaneHeaderNode = ({ data }: NodeProps<LaneHeaderNodeData>) => {
     }
 
     const normalizedTitle = normalizeNewlines(title);
-    const lines = normalizedTitle.split(/\r?\n/);
 
     return (
       <div
         style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '4px',
+          transform: 'rotate(-90deg)',
+          whiteSpace: 'pre',
           color: headerTextColor,
           fontSize: '18px',
           fontWeight: 600,
           lineHeight: 1.4,
+          textAlign: 'center',
         }}
       >
-        {lines.map((line, index) => (
-          <div key={index} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            {line.split('').map((char, charIndex) => (
-              <span key={charIndex}>{char}</span>
-            ))}
-          </div>
-        ))}
+        {normalizedTitle}
       </div>
     );
   };
@@ -81,9 +72,8 @@ export const LaneHeaderNode = ({ data }: NodeProps<LaneHeaderNodeData>) => {
       <div
         data-lane-header="true"
         data-lane-header-lane={id}
-        className={`pointer-events-auto px-4 py-3 ${isHorizontal ? '' : 'text-sm font-semibold'} ${
-          isHorizontal ? 'rounded-l-2xl' : 'rounded-t-2xl'
-        } ${isSelected ? 'ring-2 ring-blue-500/70' : ''}`}
+        className={`pointer-events-auto px-4 py-3 ${isHorizontal ? '' : 'text-sm font-semibold'} ${isHorizontal ? 'rounded-l-2xl' : 'rounded-t-2xl'
+          } ${isSelected ? 'ring-2 ring-blue-500/70' : ''}`}
         style={headerStyle}
       >
         {renderTitle()}

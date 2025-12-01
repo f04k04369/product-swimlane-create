@@ -476,37 +476,31 @@ const buildHorizontalDiagramSvg = (diagram: Diagram, options: BuildSvgOptions = 
     const lines = normalizedTitle.split(/\r?\n/);
 
     const textX = headerX + headerWidth / 2;
+    const textY = headerY + laneHeight / 2;
     const fontSize = 18;
     const lineSpacing = 4;
-    const charSpacing = 20;
 
-    let totalHeight = 0;
-    lines.forEach((line, index) => {
-      if (index > 0) {
-        totalHeight += lineSpacing;
-      }
-      totalHeight += line.length * charSpacing;
-    });
 
-    let currentY = headerY + laneHeight / 2 - totalHeight / 2;
+
+    // We want to center the text block at (textX, textY) and then rotate it 90 degrees.
+    // The rotation happens around the point (textX, textY).
+
+    svgParts.push(`<g transform="rotate(-90, ${textX}, ${textY})">`);
+
+    // If we draw text at (textX, textY) with text-anchor="middle" and dominant-baseline="middle", a single line is centered.
+    // For multiple lines, we need to offset them.
+
+    const startY = textY - ((lines.length - 1) * (fontSize + lineSpacing)) / 2;
 
     lines.forEach((line, lineIndex) => {
-      if (lineIndex > 0) {
-        currentY += lineSpacing;
-      }
-      const lineChars = line.split('');
-      let charY = currentY + charSpacing / 2;
-
-      lineChars.forEach((char) => {
-        const escapedChar = escapeXml(char);
-        svgParts.push(
-          `<text x="${textX}" y="${charY}" font-family="Helvetica, Arial, sans-serif" font-size="${fontSize}" font-weight="600" fill="${headerTextColor}" text-anchor="middle" dominant-baseline="middle">${escapedChar}</text>`
-        );
-        charY += charSpacing;
-      });
-
-      currentY += lineChars.length * charSpacing;
+      const lineY = startY + lineIndex * (fontSize + lineSpacing);
+      const escapedLine = escapeXml(line);
+      svgParts.push(
+        `<text x="${textX}" y="${lineY}" font-family="Helvetica, Arial, sans-serif" font-size="${fontSize}" font-weight="600" fill="${headerTextColor}" text-anchor="middle" dominant-baseline="central">${escapedLine}</text>`
+      );
     });
+
+    svgParts.push('</g>');
   });
 
   const adjustedSteps: Step[] = diagram.steps
