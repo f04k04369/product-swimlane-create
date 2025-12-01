@@ -33,9 +33,8 @@ export const LanePanel = () => {
           <div
             key={lane.id}
             data-testid="lane-card"
-            className={`rounded-lg border px-3 py-2 shadow-sm transition ${
-              lane.id === selectedLaneId ? 'border-primary shadow-card' : 'border-border'
-            }`}
+            className={`rounded-lg border px-3 py-2 shadow-sm transition ${lane.id === selectedLaneId ? 'border-primary shadow-card' : 'border-border'
+              }`}
           >
             <div className="flex items-center justify-between">
               <button
@@ -84,10 +83,11 @@ export const LanePanel = () => {
               </div>
             </div>
             <label className="mt-2 block text-xs font-medium text-slate-500">名称</label>
-            <input
-              className={inputStyles}
+            <textarea
+              className={`${inputStyles} min-h-[40px] resize-y`}
               value={lane.title}
               onChange={(event) => updateLane(lane.id, { title: event.target.value })}
+              rows={1}
             />
             <label className="mt-2 block text-xs font-medium text-slate-500">タイトルカラー</label>
             <input
