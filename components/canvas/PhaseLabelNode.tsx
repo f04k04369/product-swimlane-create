@@ -1,17 +1,29 @@
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import classNames from 'classnames';
+import type { DiagramOrientation } from '@/lib/diagram/types';
 
 interface PhaseLabelProps {
   id: string;
   title: string;
   width: number;
   height: number;
+  orientation: DiagramOrientation;
   isActive: boolean;
   onEdit: () => void;
   onResizeStart: (id: string, direction: 'start' | 'end', event: ReactPointerEvent<HTMLButtonElement>) => void;
 }
 
-export const PhaseLabel = ({ id, title, width, height, onEdit, isActive, onResizeStart }: PhaseLabelProps) => {
+export const PhaseLabel = ({
+  id,
+  title,
+  width,
+  height,
+  orientation,
+  onEdit,
+  isActive,
+  onResizeStart,
+}: PhaseLabelProps) => {
+  const isHorizontal = orientation === 'horizontal';
   return (
     <div
       className="pointer-events-auto relative flex justify-center px-1 transition-all duration-150 ease-out"
@@ -30,13 +42,18 @@ export const PhaseLabel = ({ id, title, width, height, onEdit, isActive, onResiz
           onEdit();
         }}
       >
-        <span className="tracking-widest" style={{ writingMode: 'vertical-rl' }}>
+        <span className="tracking-widest" style={{ writingMode: isHorizontal ? 'horizontal-tb' : 'vertical-rl' }}>
           {title || 'フェーズ設定'}
         </span>
       </button>
       <button
         type="button"
-        className="pointer-events-auto absolute left-1/2 top-0 h-3 w-10 -translate-x-1/2 -translate-y-1 cursor-ns-resize rounded-full border border-slate-400 bg-white/90 shadow transition-colors duration-150 hover:border-blue-400 hover:bg-blue-100"
+        className={classNames(
+          'pointer-events-auto absolute h-3 w-10 rounded-full border border-slate-400 bg-white/90 shadow transition-colors duration-150 hover:border-blue-400 hover:bg-blue-100',
+          isHorizontal
+            ? 'left-0 top-1/2 -translate-x-1 translate-y-[-50%] cursor-ew-resize'
+            : 'left-1/2 top-0 -translate-x-1/2 -translate-y-1 cursor-ns-resize'
+        )}
         onPointerDown={(event) => {
           event.stopPropagation();
           onResizeStart(id, 'start', event);
@@ -44,7 +61,12 @@ export const PhaseLabel = ({ id, title, width, height, onEdit, isActive, onResiz
       />
       <button
         type="button"
-        className="pointer-events-auto absolute bottom-0 left-1/2 h-3 w-10 -translate-x-1/2 translate-y-1 cursor-ns-resize rounded-full border border-slate-400 bg-white/90 shadow transition-colors duration-150 hover:border-blue-400 hover:bg-blue-100"
+        className={classNames(
+          'pointer-events-auto absolute h-3 w-10 rounded-full border border-slate-400 bg-white/90 shadow transition-colors duration-150 hover:border-blue-400 hover:bg-blue-100',
+          isHorizontal
+            ? 'right-0 top-1/2 translate-x-1 translate-y-[-50%] cursor-ew-resize'
+            : 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1 cursor-ns-resize'
+        )}
         onPointerDown={(event) => {
           event.stopPropagation();
           onResizeStart(id, 'end', event);

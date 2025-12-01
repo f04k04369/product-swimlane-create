@@ -1,4 +1,16 @@
-import { computeLaneHeight, deriveLanePositionX, LANE_PADDING, LANE_WIDTH, ROW_HEIGHT } from '@/lib/diagram/layout';
+import {
+  COLUMN_WIDTH,
+  HORIZONTAL_HEADER_WIDTH,
+  HORIZONTAL_STEP_GAP,
+  computeHorizontalLaneWidth,
+  computeLaneHeight,
+  computeLaneWidth,
+  deriveLanePositionX,
+  deriveLanePositionY,
+  LANE_PADDING,
+  LANE_WIDTH,
+  ROW_HEIGHT,
+} from '@/lib/diagram/layout';
 import type { Diagram, Step, Connection } from '@/lib/diagram/types';
 import type { DiagramContentBounds } from './htmlToImage';
 import { hexToRgb, mixRgb, rgbToCss, rgbaToCss, getContrastingTextColor } from '@/components/canvas/laneColors';
@@ -313,6 +325,54 @@ const buildConnectionLabel = (connection: Connection, labelPoint: { x: number; y
   return `<text font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle" fill="${TEXT_COLOR}">${tspans}</text>`;
 };
 
+const computeHorizontalDiagramBounds = (diagram: Diagram): DiagramContentBounds => {
+  if (!diagram.lanes.length) {
+    const stride = COLUMN_WIDTH + HORIZONTAL_STEP_GAP;
+    return {
+      minX: 0,
+      minY: 0,
+      width: HORIZONTAL_HEADER_WIDTH + LANE_PADDING * 2 + stride,
+      height: LANE_PADDING * 2 + LANE_WIDTH,
+    };
+  }
+
+  const ordered = [...diagram.lanes].sort((a, b) => a.order - b.order);
+  const first = ordered[0];
+  const last = ordered.at(-1) ?? ordered[0];
+
+  const laneTop = deriveLanePositionY(ordered, first.order);
+  const laneBottom = deriveLanePositionY(ordered, last.order) + (last.width ?? LANE_WIDTH);
+
+  const maxLaneWidth = ordered.reduce((width, lane) => {
+    const laneSteps = diagram.steps.filter((step) => step.laneId === lane.id);
+    return Math.max(width, computeHorizontalLaneWidth(laneSteps));
+  }, COLUMN_WIDTH + HORIZONTAL_STEP_GAP);
+
+  const stepsRight = diagram.steps.length
+    ? Math.max(...diagram.steps.map((step) => step.x + step.width))
+    : 0;
+  const stepsBottom = diagram.steps.length
+    ? Math.max(...diagram.steps.map((step) => step.y + step.height))
+    : 0;
+
+  const contentOffset = HORIZONTAL_HEADER_WIDTH + LANE_PADDING;
+  const stride = COLUMN_WIDTH + HORIZONTAL_STEP_GAP;
+  const minWidth = contentOffset + stride;
+  const contentRight = Math.max(
+    minWidth,
+    contentOffset + maxLaneWidth,
+    stepsRight + LANE_PADDING
+  );
+  const contentBottom = Math.max(laneBottom, stepsBottom + LANE_PADDING);
+
+  return {
+    minX: 0,
+    minY: Math.min(0, laneTop - LANE_PADDING),
+    width: contentRight,
+    height: contentBottom + LANE_PADDING,
+  };
+};
+
 const computeDiagramBounds = (diagram: Diagram): DiagramContentBounds => {
   if (!diagram.lanes.length) {
     return {
@@ -342,7 +402,170 @@ const computeDiagramBounds = (diagram: Diagram): DiagramContentBounds => {
   };
 };
 
+const buildHorizontalDiagramSvg = (diagram: Diagram, options: BuildSvgOptions = {}) => {
+  const padding = options.padding ?? DEFAULT_PADDING;
+  const bounds = options.bounds ?? computeHorizontalDiagramBounds(diagram);
+  const background = options.backgroundColor ?? '#ffffff';
+
+  const boundsMaxX = bounds.minX + bounds.width;
+  const boundsMaxY = bounds.minY + bounds.height;
+
+  const exportWidth = Math.max(1, Math.round(bounds.width + padding * 2));
+  const exportHeight = Math.max(1, Math.round(bounds.height + padding * 2));
+
+  const shiftX = (value: number) => value - bounds.minX + padding;
+  const shiftY = (value: number) => value - bounds.minY + padding;
+
+  const svgParts: string[] = [];
+
+  svgParts.push('<?xml version="1.0" encoding="UTF-8"?>');
+  svgParts.push('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">');
+  svgParts.push(
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="${exportWidth}" height="${exportHeight}" viewBox="0 0 ${exportWidth} ${exportHeight}" preserveAspectRatio="xMidYMid meet">`
+  );
+  svgParts.push(`<rect x="0" y="0" width="100%" height="100%" fill="${background}"/>`);
+
+  svgParts.push('<defs>');
+  svgParts.push(
+    `<marker id="arrow-end" markerWidth="12" markerHeight="12" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 L12 6 L0 12 Z" fill="${CONNECTION_COLOR}"/></marker>`
+  );
+  svgParts.push('</defs>');
+
+  const orderedLanes = [...diagram.lanes].sort((a, b) => a.order - b.order);
+  const laneWidths = new Map<string, number>();
+  orderedLanes.forEach((lane) => {
+    const laneSteps = diagram.steps.filter((step) => step.laneId === lane.id);
+    laneWidths.set(lane.id, computeHorizontalLaneWidth(laneSteps));
+  });
+
+  orderedLanes.forEach((lane) => {
+    const laneWidthValue = laneWidths.get(lane.id) ?? (COLUMN_WIDTH + HORIZONTAL_STEP_GAP);
+    const laneHeight = lane.width ?? LANE_WIDTH;
+    const laneY = shiftY(deriveLanePositionY(orderedLanes, lane.order));
+
+    const baseColor = hexToRgb(lane.color);
+    const laneFillColor = mixRgb(baseColor, { r: 255, g: 255, b: 255 }, 0.9);
+    const laneBorderTint = mixRgb(baseColor, { r: 148, g: 163, b: 184 }, 0.55);
+    const headerFillColor = mixRgb(baseColor, { r: 255, g: 255, b: 255 }, 0.7);
+    const headerTextColor = getContrastingTextColor(headerFillColor);
+
+    const laneFillRgba = rgbaToCss(laneFillColor, 0.85);
+    const borderRgba = rgbaToCss(laneBorderTint, 0.6);
+    const headerFillRgb = rgbToCss(headerFillColor);
+
+    const headerX = shiftX(0);
+    const headerWidth = HORIZONTAL_HEADER_WIDTH;
+    const headerY = laneY;
+
+    const laneX = shiftX(HORIZONTAL_HEADER_WIDTH);
+    const laneWidth = LANE_PADDING + laneWidthValue;
+
+    svgParts.push(
+      `<rect x="${laneX}" y="${laneY}" width="${laneWidth}" height="${laneHeight}" fill="${laneFillRgba}" stroke="${borderRgba}" stroke-width="1.5"/>`
+    );
+
+    svgParts.push(
+      `<rect x="${headerX}" y="${headerY}" width="${headerWidth}" height="${laneHeight}" fill="${headerFillRgb}" stroke="${borderRgba}" stroke-width="1.5"/>`
+    );
+
+    const normalizeNewlines = (text: string): string => {
+      return text.replace(/\\n/g, '\n').replace(/\\r\\n/g, '\r\n').replace(/\\r/g, '\r');
+    };
+
+    const titleText = lane.title || 'Lane';
+    const normalizedTitle = normalizeNewlines(titleText);
+    const lines = normalizedTitle.split(/\r?\n/);
+
+    const textX = headerX + headerWidth / 2;
+    const fontSize = 18;
+    const lineSpacing = 4;
+    const charSpacing = 20;
+
+    let totalHeight = 0;
+    lines.forEach((line, index) => {
+      if (index > 0) {
+        totalHeight += lineSpacing;
+      }
+      totalHeight += line.length * charSpacing;
+    });
+
+    let currentY = headerY + laneHeight / 2 - totalHeight / 2;
+
+    lines.forEach((line, lineIndex) => {
+      if (lineIndex > 0) {
+        currentY += lineSpacing;
+      }
+      const lineChars = line.split('');
+      let charY = currentY + charSpacing / 2;
+
+      lineChars.forEach((char) => {
+        const escapedChar = escapeXml(char);
+        svgParts.push(
+          `<text x="${textX}" y="${charY}" font-family="Helvetica, Arial, sans-serif" font-size="${fontSize}" font-weight="600" fill="${headerTextColor}" text-anchor="middle" dominant-baseline="middle">${escapedChar}</text>`
+        );
+        charY += charSpacing;
+      });
+
+      currentY += lineChars.length * charSpacing;
+    });
+  });
+
+  const adjustedSteps: Step[] = diagram.steps
+    .filter((step) => {
+      const intersectsX = step.x + step.width >= bounds.minX && step.x <= boundsMaxX;
+      const intersectsY = step.y + step.height >= bounds.minY && step.y <= boundsMaxY;
+      return intersectsX && intersectsY;
+    })
+    .map((step) => ({
+      ...step,
+      x: shiftX(step.x),
+      y: shiftY(step.y),
+    }));
+
+  const stepMap = new Map<string, Step>();
+  adjustedSteps.forEach((step) => stepMap.set(step.id, step));
+
+  adjustedSteps.forEach((step) => {
+    svgParts.push(buildStepShape(step));
+    svgParts.push(buildStepText(step));
+  });
+
+  diagram.connections.forEach((connection) => {
+    const adjustedConnection: Connection = {
+      ...connection,
+      control: connection.control
+        ? {
+            x: shiftX(connection.control.x),
+            y: shiftY(connection.control.y),
+          }
+        : null,
+    };
+
+    const pathData = buildConnectionPath(adjustedConnection, stepMap);
+    if (!pathData) return;
+
+    svgParts.push(
+      `<path d="${pathData.path}" fill="none" stroke="${CONNECTION_COLOR}" stroke-width="2" marker-end="url(#arrow-end)" stroke-linecap="round" stroke-linejoin="round"/>`
+    );
+
+    const label = buildConnectionLabel(connection, {
+      x: pathData.labelPoint.x,
+      y: pathData.labelPoint.y - 8,
+    });
+    if (label) {
+      svgParts.push(label);
+    }
+  });
+
+  svgParts.push('</svg>');
+
+  return svgParts.join('\n');
+};
+
 export const buildDiagramSvg = (diagram: Diagram, options: BuildSvgOptions = {}) => {
+  if (diagram.orientation === 'horizontal') {
+    return buildHorizontalDiagramSvg(diagram, options);
+  }
   const padding = options.padding ?? DEFAULT_PADDING;
   const bounds = options.bounds ?? computeDiagramBounds(diagram);
   const background = options.backgroundColor ?? '#ffffff';

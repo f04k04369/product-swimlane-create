@@ -1,5 +1,16 @@
 import { nanoid } from 'nanoid/non-secure';
-import { deriveStepX, LANE_WIDTH, rowIndexFromY, yForRow } from '@/lib/diagram/layout';
+import {
+  COLUMN_WIDTH,
+  HORIZONTAL_HEADER_WIDTH,
+  LANE_PADDING,
+  columnIndexFromX,
+  deriveLanePositionY,
+  deriveStepX,
+  horizontalColumnLeft,
+  LANE_WIDTH,
+  rowIndexFromY,
+  yForRow,
+} from '@/lib/diagram/layout';
 import type { Connection, Diagram, Lane, MarkerKind, PhaseGroup, Step, StepKind } from '@/lib/diagram/types';
 
 class MermaidParseError extends Error {}
@@ -43,6 +54,11 @@ export const importMermaidToDiagram = (content: string): Diagram => {
   const persistedMatch = cleaned.match(/%%\s*swimlane-json:(.+)/);
   const persistedState = parseJsonMeta('swimlane-json', persistedMatch?.[1]);
 
+  const parseOrientation = (value: unknown): Diagram['orientation'] =>
+    value === 'horizontal' ? 'horizontal' : 'vertical';
+
+  const metaOrientation = parseOrientation(diagramMeta.orientation);
+
   const lanes: Lane[] = [];
   const steps: Step[] = [];
   const stepAliasMap = new Map<string, string>();
@@ -59,8 +75,9 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       .sort((a, b) => a.order - b.order)
       .map((lane, index): Lane => ({ ...lane, order: index }));
     const laneMap = new Map(sanitizedLanes.map((lane) => [lane.id, lane] as const));
+  const persistedOrientation = parseOrientation(persistedState.orientation ?? metaOrientation);
     const sanitizedSteps = (persistedState.steps as Step[])
-      .map((step, index) => sanitizeStep(step, sanitizedLanes, index))
+      .map((step, index) => sanitizeStep(step, sanitizedLanes, index, persistedOrientation))
       .filter((step): step is Step => laneMap.has(step.laneId));
     const sanitizedConnections = ((persistedState.connections ?? []) as Connection[])
       .map((connection) => sanitizeConnection(connection, sanitizedSteps))
@@ -83,12 +100,15 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       phaseGroups: sanitizedPhases,
       createdAt: diagramMeta.createdAt ?? now,
       updatedAt: now,
+      orientation: persistedOrientation,
     };
   }
 
   const laneRegex = /subgraph\s+([A-Za-z0-9_-]+)\s*\["([^"]*)"\]\s*([\s\S]*?)\nend/g;
   let laneMatch: RegExpExecArray | null;
   let laneOrder = 0;
+
+  const orientation = metaOrientation;
 
   while ((laneMatch = laneRegex.exec(cleaned)) !== null) {
     const [, , laneTitleRaw, laneBody] = laneMatch;
@@ -125,22 +145,51 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       const existingLaneSteps = steps.filter((item) => item.laneId === laneId);
       const userOrder = typeof stepMeta.userOrder === 'number' ? stepMeta.userOrder : undefined;
       const inferredOrder =
-        typeof stepMeta.y === 'number' ? rowIndexFromY(stepMeta.y, height) : undefined;
-      const order =
-        typeof stepMeta.order === 'number'
-          ? stepMeta.order
-          : userOrder ?? inferredOrder ?? existingLaneSteps.length;
+        orientation === 'horizontal'
+          ? typeof stepMeta.x === 'number'
+            ? Math.max(
+                0,
+                columnIndexFromX(stepMeta.x - HORIZONTAL_HEADER_WIDTH, width)
+              )
+            : undefined
+          : typeof stepMeta.y === 'number'
+          ? Math.max(0, rowIndexFromY(stepMeta.y, height))
+          : undefined;
+      const order = Math.max(
+        0,
+        Math.floor(
+          typeof stepMeta.order === 'number'
+            ? stepMeta.order
+            : userOrder ?? inferredOrder ?? existingLaneSteps.length
+        )
+      );
       const rawKind = stepMeta.kind;
       const kind: StepKind = isStepKind(rawKind) ? rawKind : 'process';
       const userX = typeof stepMeta.userX === 'number' ? stepMeta.userX : undefined;
       const userY = typeof stepMeta.userY === 'number' ? stepMeta.userY : undefined;
-      const x = typeof userX === 'number' ? userX : typeof stepMeta.x === 'number' ? stepMeta.x : deriveStepX(lanes, lane.order, width);
+      const defaultX =
+        orientation === 'horizontal'
+          ? HORIZONTAL_HEADER_WIDTH +
+            LANE_PADDING +
+            horizontalColumnLeft(order) +
+            Math.max(0, (COLUMN_WIDTH - width) / 2)
+          : deriveStepX(lanes, lane.order, width);
+      const defaultY =
+        orientation === 'horizontal'
+          ? deriveLanePositionY(lanes, lane.order) + Math.max(0, ((lane.width ?? LANE_WIDTH) - height) / 2)
+          : yForRow(order, height);
+      const x =
+        typeof userX === 'number'
+          ? userX
+          : typeof stepMeta.x === 'number'
+          ? stepMeta.x
+          : defaultX;
       const y =
         typeof userY === 'number'
           ? userY
           : typeof stepMeta.y === 'number'
           ? stepMeta.y
-          : yForRow(order, height);
+          : defaultY;
       const color = stepMeta.color ?? KIND_COLORS[kind] ?? '#1f2937';
 
       const step: Step = {
@@ -255,6 +304,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
     phaseGroups: phaseMetas,
     createdAt: diagramMeta.createdAt ?? now,
     updatedAt: now,
+    orientation,
   };
 };
 
@@ -268,17 +318,47 @@ const sanitizeLane = (lane: Lane, index: number): Lane => ({
   width: typeof lane.width === 'number' ? lane.width : LANE_WIDTH,
 });
 
-const sanitizeStep = (step: Step, lanes: Lane[], index: number): Step => {
+const sanitizeStep = (
+  step: Step,
+  lanes: Lane[],
+  index: number,
+  orientation: Diagram['orientation']
+): Step => {
   const fallbackLane = lanes[0];
-  const laneId = typeof step.laneId === 'string' && lanes.some((lane) => lane.id === step.laneId)
-    ? step.laneId
-    : fallbackLane?.id ?? nanoid();
+  const laneId =
+    typeof step.laneId === 'string' && lanes.some((lane) => lane.id === step.laneId)
+      ? step.laneId
+      : fallbackLane?.id ?? nanoid();
+  const lane = lanes.find((item) => item.id === laneId) ?? fallbackLane;
   const kind: StepKind = step.kind === 'decision' || step.kind === 'start' || step.kind === 'end' || step.kind === 'file' ? step.kind : 'process';
   const width = typeof step.width === 'number' ? step.width : 240;
   const height = typeof step.height === 'number' ? step.height : 120;
-  const order = typeof step.order === 'number' ? step.order : index;
-  const x = typeof step.x === 'number' ? step.x : deriveStepX(lanes, lanes.find((lane) => lane.id === laneId)?.order ?? 0, width);
-  const y = typeof step.y === 'number' ? step.y : yForRow(order, height);
+  const order = Math.max(
+    0,
+    Math.floor(
+      typeof step.order === 'number'
+        ? step.order
+        : orientation === 'horizontal' && typeof step.x === 'number'
+        ? columnIndexFromX(step.x - HORIZONTAL_HEADER_WIDTH, width)
+        : orientation === 'vertical' && typeof step.y === 'number'
+        ? rowIndexFromY(step.y, height)
+        : index
+    )
+  );
+  const laneOrder = lane?.order ?? 0;
+  const defaultX =
+    orientation === 'horizontal'
+      ? HORIZONTAL_HEADER_WIDTH +
+        LANE_PADDING +
+        horizontalColumnLeft(order) +
+        Math.max(0, (COLUMN_WIDTH - width) / 2)
+      : deriveStepX(lanes, laneOrder, width);
+  const defaultY =
+    orientation === 'horizontal'
+      ? deriveLanePositionY(lanes, laneOrder) + Math.max(0, ((lane?.width ?? LANE_WIDTH) - height) / 2)
+      : yForRow(order, height);
+  const x = typeof step.x === 'number' ? step.x : defaultX;
+  const y = typeof step.y === 'number' ? step.y : defaultY;
   return {
     id: typeof step.id === 'string' ? step.id : nanoid(),
     laneId,

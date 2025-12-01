@@ -21,8 +21,14 @@ import {
 } from '@/lib/export/htmlToImage';
 import { useDiagramStore } from '@/state/useDiagramStore';
 import {
+  COLUMN_WIDTH,
+  HORIZONTAL_HEADER_WIDTH,
+  HORIZONTAL_STEP_GAP,
+  computeHorizontalLaneWidth,
   computeLaneHeight,
+  computeLaneWidth,
   deriveLanePositionX,
+  deriveLanePositionY,
   LANE_PADDING,
   LANE_WIDTH,
   ROW_HEIGHT,
@@ -56,6 +62,40 @@ const computeDiagramContentBounds = (diagram: Diagram): DiagramContentBounds | n
   const sortedLanes = [...diagram.lanes].sort((a, b) => a.order - b.order);
   const firstOrder = sortedLanes[0].order;
   const lastOrder = sortedLanes[sortedLanes.length - 1].order;
+
+  if (diagram.orientation === 'horizontal') {
+    const horizontalHeaderWidth = HORIZONTAL_HEADER_WIDTH;
+    const top = deriveLanePositionY(sortedLanes, firstOrder);
+    const lastLane = sortedLanes.at(-1);
+    const bottom = deriveLanePositionY(sortedLanes, lastOrder) + (lastLane?.width ?? LANE_WIDTH);
+
+    const maxLaneWidth = sortedLanes.reduce((width, lane) => {
+      const laneSteps = diagram.steps.filter((step) => step.laneId === lane.id);
+      return Math.max(width, computeHorizontalLaneWidth(laneSteps));
+    }, COLUMN_WIDTH + HORIZONTAL_STEP_GAP);
+
+    const contentOffset = horizontalHeaderWidth + LANE_PADDING;
+    const stepsRight = diagram.steps.length
+      ? Math.max(...diagram.steps.map((step) => step.x + step.width - contentOffset))
+      : 0;
+
+    const stride = COLUMN_WIDTH + HORIZONTAL_STEP_GAP;
+    const contentRight = Math.max(maxLaneWidth, stepsRight + stride);
+    const maxX = contentOffset + contentRight;
+
+    const stepsBottom = diagram.steps.length
+      ? Math.max(...diagram.steps.map((step) => step.y + step.height))
+      : 0;
+
+    const contentBottom = Math.max(bottom, stepsBottom + LANE_PADDING);
+
+    return {
+      minX: 0,
+      minY: Math.min(0, top),
+      width: maxX,
+      height: contentBottom,
+    };
+  }
 
   const laneLeft = Math.max(0, deriveLanePositionX(sortedLanes, firstOrder) - LANE_PADDING * 0.5);
   const lastLane = sortedLanes.at(-1);

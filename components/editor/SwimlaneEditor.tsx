@@ -9,6 +9,7 @@ import { MermaidDialog } from '@/components/export/MermaidDialog';
 import { AuditLogDialog } from '@/components/export/AuditLogDialog';
 import { ImageExportDialog } from '@/components/export/ImageExportDialog';
 import type { StepKind } from '@/lib/diagram/types';
+import type { DiagramOrientation } from '@/lib/diagram/types';
 
 export const SwimlaneEditor = () => {
   const addLane = useDiagramStore((state) => state.addLane);
@@ -19,6 +20,8 @@ export const SwimlaneEditor = () => {
   const reset = useDiagramStore((state) => state.reset);
   const selection = useDiagramStore((state) => state.selection);
   const diagram = useDiagramStore((state) => state.diagram);
+  const isOrientationCommitted = useDiagramStore((state) => state.isOrientationCommitted);
+  const initializeDiagram = useDiagramStore((state) => state.initializeDiagram);
   const canUndo = useDiagramStore((state) => state.canUndo);
   const canRedo = useDiagramStore((state) => state.canRedo);
   const setSelection = useDiagramStore((state) => state.setSelection);
@@ -32,6 +35,9 @@ export const SwimlaneEditor = () => {
   const [status, setStatus] = useState<{ type: 'info' | 'error'; text: string } | null>(null);
   const [lanePanelOpen, setLanePanelOpen] = useState(true);
   const [stepPanelOpen, setStepPanelOpen] = useState(true);
+  const handleOrientationSelect = (orientation: DiagramOrientation) => {
+    initializeDiagram(orientation);
+  };
 
   useEffect(() => {
     if (!status) return;
@@ -242,6 +248,37 @@ export const SwimlaneEditor = () => {
           initialFormat="png"
         />
       </div>
+      {!isOrientationCommitted && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-white/95 backdrop-blur">
+          <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-10 shadow-2xl">
+            <h2 className="text-2xl font-semibold text-slate-800">スイムレーンの向きを選択</h2>
+            <p className="mt-3 text-sm text-slate-600">
+              最初に縦型または横型のスイムレーンを選択してください。この設定はあとから変更できません。
+            </p>
+            <div className="mt-8 grid gap-4 md:grid-cols-2">
+              <button
+                type="button"
+                className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 px-6 py-5 text-left transition hover:border-blue-400 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+                onClick={() => handleOrientationSelect('vertical')}
+              >
+                <span className="text-lg font-semibold text-slate-800">縦型レーン</span>
+                <span className="text-xs text-slate-500">レーンを左右に並べ、ステップを縦方向に配置します。</span>
+              </button>
+              <button
+                type="button"
+                className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 px-6 py-5 text-left transition hover:border-blue-400 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+                onClick={() => handleOrientationSelect('horizontal')}
+              >
+                <span className="text-lg font-semibold text-slate-800">横型レーン</span>
+                <span className="text-xs text-slate-500">レーンを上下に並べ、ステップを横方向に配置します。</span>
+              </button>
+            </div>
+            <p className="mt-6 text-xs text-slate-500">
+              選択後に向きを変更する場合は、新しい図を作成してください。
+            </p>
+          </div>
+        </div>
+      )}
     </ReactFlowProvider>
   );
 };
