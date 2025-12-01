@@ -133,9 +133,9 @@ const layoutLaneSteps = (diagram: Diagram, laneId: ElementID, providedSteps?: St
   const laneSteps = providedSteps
     ? [...providedSteps]
     : diagram.steps
-        .filter((step) => step.laneId === laneId)
-        .slice()
-        .sort((a, b) => a.order - b.order);
+      .filter((step) => step.laneId === laneId)
+      .slice()
+      .sort((a, b) => a.order - b.order);
 
   const occupiedRows = new Set<number>();
 
@@ -225,13 +225,13 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
     const nextUndo = [...undoStack, historyEntry].slice(-HISTORY_LIMIT);
     const nextAudit = audit
       ? [
-          ...auditTrail,
-          {
-            id: nanoid(),
-            timestamp: Date.now(),
-            ...audit,
-          },
-        ]
+        ...auditTrail,
+        {
+          id: nanoid(),
+          timestamp: Date.now(),
+          ...audit,
+        },
+      ]
       : auditTrail;
 
     set({
@@ -261,7 +261,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       const snapshot = cloneDiagram(diagram);
       snapshot.orientation = diagram.orientation ?? 'vertical';
       snapshot.updatedAt = new Date().toISOString();
-      const originalLaneMeta = new Map(snapshot.lanes.map((lane) => [lane.id, { color: lane.color }])) ;
+      const originalLaneMeta = new Map(snapshot.lanes.map((lane) => [lane.id, { color: lane.color }]));
       const originalStepMeta = new Map(
         snapshot.steps.map((step) => [step.id, { x: step.x, y: step.y, width: step.width, height: step.height, order: step.order, color: step.color }])
       );
@@ -438,7 +438,11 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           .filter((item) => item.id !== id)
           .sort((a, b) => a.order - b.order);
         sorted.splice(bounded, 0, lane);
-        draft.lanes = normalizeLaneOrder(sorted);
+        draft.lanes = sorted.map((l, index) => ({
+          ...l,
+          order: index,
+          color: sanitizeLaneColor(l.color) ?? getLaneColor(index),
+        }));
         recalcAllLaneLayouts(draft);
         sortSteps(draft);
       }, 'reorder lane', {
@@ -559,9 +563,9 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         let desiredRow =
           draft.orientation === 'horizontal'
             ? Math.max(
-                0,
-                columnIndexFromX(x - HORIZONTAL_HEADER_WIDTH, existing.width)
-              )
+              0,
+              columnIndexFromX(x - HORIZONTAL_HEADER_WIDTH, existing.width)
+            )
             : Math.max(0, rowIndexFromY(y, existing.height));
         while (occupiedRows.has(desiredRow)) {
           desiredRow += 1;
@@ -889,8 +893,8 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       const laneIds = scope === 'all'
         ? get().diagram.lanes.map((lane) => lane.id)
         : laneId
-        ? [laneId]
-        : [];
+          ? [laneId]
+          : [];
       if (!laneIds.length) return;
 
       commit((draft) => {

@@ -15,13 +15,14 @@ interface LaneNodeData {
   isSelected?: boolean;
   pendingRow: number | null;
   rowHeight: number;
+  highlightWidth: number;
   lanePadding: number;
   orientation: DiagramOrientation;
   onRowHandleClick?: (laneId: string, row: number) => void;
 }
 
 export const LaneNode = ({ data }: NodeProps<LaneNodeData>) => {
-  const { id, title, color, height, width, pendingRow, rowHeight, lanePadding, orientation, onRowHandleClick } = data;
+  const { id, title, color, height, width, pendingRow, rowHeight, highlightWidth, lanePadding, orientation, onRowHandleClick } = data;
   const updateLane = useDiagramStore((state) => state.updateLane);
   const isHorizontal = orientation === 'horizontal';
   const laneThickness = isHorizontal ? height : width;
@@ -63,12 +64,12 @@ export const LaneNode = ({ data }: NodeProps<LaneNodeData>) => {
         (isHorizontal ? (
           <div
             className="pointer-events-none absolute top-0 bottom-0 border border-dashed border-blue-400/70 bg-blue-200/30"
-            style={{ left: highlightOffset, width: rowHeight }}
+            style={{ left: highlightOffset, width: highlightWidth }}
           />
         ) : (
           <div
             className="pointer-events-none absolute left-0 right-0 border border-dashed border-blue-400/70 bg-blue-200/30"
-            style={{ top: highlightOffset, height: rowHeight }}
+            style={{ top: highlightOffset, height: highlightWidth }}
           />
         ))}
       {Array.from({ length: rowCount }, (_, index) => {
