@@ -34,6 +34,8 @@ import {
   ROW_HEIGHT,
   columnIndexFromX,
   rowIndexFromY,
+  resolveLaneIndex,
+  resolveLaneIndexByY,
 } from '@/lib/diagram/layout';
 import { PHASE_GAP_TO_LANE, PHASE_LABEL_MIN_LEFT, PHASE_LABEL_WIDTH } from '@/lib/diagram/constants';
 import type { PhaseGroup } from '@/lib/diagram/types';
@@ -81,7 +83,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
   const scrollToTopCounter = useDiagramStore((state) => state.scrollToTopCounter);
   const addPhaseGroup = useDiagramStore((state) => state.addPhaseGroup);
   const updatePhaseGroup = useDiagramStore((state) => state.updatePhaseGroup);
-  const { project, setViewport, getViewport } = useReactFlow();
+  const { project, setViewport, getViewport, setNodes } = useReactFlow();
   const [phaseResize, setPhaseResize] = useState<PhaseResizeState | null>(null);
   const [selectedPhaseRow, setSelectedPhaseRow] = useState<number | null>(null);
 
@@ -735,13 +737,88 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
   const handleNodeDragStop = useCallback(
     (_: unknown, node: Node) => {
       if (node.type !== 'step') return;
-      moveStep(node.id, node.position.x, node.position.y);
+
+      const { diagram: current } = useDiagramStore.getState();
+      const step = current.steps.find((s) => s.id === node.id);
+      if (!step) return;
+
+      let nextX = node.position.x;
+      let nextY = node.position.y;
+
+      if (isHorizontal) {
+        const diagramX = node.position.x - laneContentOffsetX - lanePaddingValue;
+        const column = Math.max(0, Math.round(diagramX / rowSize));
+        const centerX = laneContentOffsetX + lanePaddingValue + column * rowSize + (rowSize - step.width) / 2;
+
+        // Find the lane based on Y position
+        const centerY = node.position.y + step.height / 2;
+        const laneIndex = resolveLaneIndexByY(sortedLanes, centerY);
+        const lane = sortedLanes[laneIndex];
+        if (lane) {
+          const laneTop = deriveLanePositionY(sortedLanes, lane.order);
+          const laneCenterY = laneTop + (lane.width - step.height) / 2;
+          nextY = laneCenterY;
+        }
+        nextX = centerX;
+      } else {
+        const diagramY = node.position.y - lanePaddingValue;
+        const row = Math.max(0, Math.round(diagramY / rowSize));
+        const centerY = lanePaddingValue + row * rowSize + (rowSize - step.height) / 2;
+
+        // Find the lane based on X position
+        const centerX = node.position.x + step.width / 2;
+        const laneIndex = resolveLaneIndex(sortedLanes, centerX);
+        const lane = sortedLanes[laneIndex];
+        if (lane) {
+          const laneLeft = deriveLanePositionX(sortedLanes, lane.order);
+          const laneCenterX = laneLeft + (lane.width - step.width) / 2;
+          nextX = laneCenterX;
+        }
+        nextY = centerY;
+      }
+
+      moveStep(node.id, nextX, nextY);
       const { diagram: latestDiagram } = useDiagramStore.getState();
-      const moved = latestDiagram.steps.find((step) => step.id === node.id);
+      const moved = latestDiagram.steps.find((s) => s.id === node.id);
       clearPendingInsert();
       setSelection({ lanes: moved ? [moved.laneId] : [], steps: [node.id], connections: [] });
     },
-    [clearPendingInsert, moveStep, setSelection]
+    [clearPendingInsert, isHorizontal, laneContentOffsetX, lanePaddingValue, moveStep, resolveLaneIndex, resolveLaneIndexByY, rowSize, setSelection, sortedLanes]
+  );
+
+  const handleNodeDrag = useCallback(
+    (_: MouseEvent, node: Node) => {
+      if (node.type !== 'step') return;
+
+      const { diagram: current } = useDiagramStore.getState();
+      const step = current.steps.find((s) => s.id === node.id);
+      if (!step) return;
+
+      if (isHorizontal) {
+        const diagramX = node.position.x - laneContentOffsetX - lanePaddingValue;
+        const column = Math.max(0, Math.round(diagramX / rowSize));
+
+        // Find the lane based on Y position
+        const centerY = node.position.y + step.height / 2;
+        const laneIndex = resolveLaneIndexByY(sortedLanes, centerY);
+        const lane = sortedLanes[laneIndex];
+        if (lane) {
+          setPendingInsert(lane.id, column);
+        }
+      } else {
+        const diagramY = node.position.y - lanePaddingValue;
+        const row = Math.max(0, Math.round(diagramY / rowSize));
+
+        // Find the lane based on X position
+        const centerX = node.position.x + step.width / 2;
+        const laneIndex = resolveLaneIndex(sortedLanes, centerX);
+        const lane = sortedLanes[laneIndex];
+        if (lane) {
+          setPendingInsert(lane.id, row);
+        }
+      }
+    },
+    [isHorizontal, laneContentOffsetX, lanePaddingValue, resolveLaneIndex, resolveLaneIndexByY, rowSize, setPendingInsert, sortedLanes]
   );
 
   const handleConnect = useCallback(

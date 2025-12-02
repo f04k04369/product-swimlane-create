@@ -22,7 +22,7 @@ interface StepNodeData {
   orientation: 'vertical' | 'horizontal';
 }
 
-export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
+export const StepNode = ({ id, data, selected, dragging }: NodeProps<StepNodeData>) => {
   const updateStep = useDiagramStore((state) => state.updateStep);
   const { title, description, color, fillColor, laneColor, width, height, kind, onSelect, order, orientation } = data;
   const isHorizontal = orientation === 'horizontal';
@@ -34,6 +34,7 @@ export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
 
   const baseContentClass = 'flex h-full w-full flex-col justify-center px-4 py-3 text-center text-sm shadow-lg transition';
   const stateClass = selected ? 'ring-2 ring-primary' : 'hover:shadow-xl';
+  const cursorClass = dragging ? 'cursor-grabbing' : 'cursor-grab';
   const contentStyle: CSSProperties = {};
 
   const contentClass = (() => {
@@ -60,6 +61,17 @@ export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
         contentStyle.position = 'relative';
         contentStyle.zIndex = 1;
         return classNames(baseContentClass, stateClass, 'relative overflow-hidden');
+      case 'loop':
+        contentStyle.clipPath = 'polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%)';
+        contentStyle.backgroundColor = fillColor || '#e0ebff';
+        contentStyle.border = '1px solid #bae6fd';
+        return classNames(baseContentClass, stateClass);
+      case 'database':
+        // Database shape is complex, handled by SVG in the render
+        contentStyle.backgroundColor = 'transparent';
+        contentStyle.border = 'none';
+        contentStyle.boxShadow = 'none';
+        return classNames(baseContentClass, stateClass.replace('shadow-lg', '').replace('hover:shadow-xl', ''));
       default:
         if (isHorizontal) {
           contentStyle.borderTopWidth = 6;
@@ -131,12 +143,25 @@ export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
           onSelect(id);
         }
       }}
-      className="react-flow__node-step relative flex h-full w-full focus:outline-none"
+      className={`react-flow__node-step relative flex h-full w-full focus:outline-none ${cursorClass}`}
     >
       <div className="pointer-events-none absolute left-2 top-2 z-10 rounded bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-slate-500 shadow-sm">
         {isHorizontal ? '列' : '行'} {order + 1}
       </div>
       <div className="relative h-full w-full">
+        {kind === 'database' && (
+          <div className="absolute inset-0 z-0">
+            <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none">
+              <path
+                d="M0 15 C0 7 22.5 0 50 0 S100 7 100 15 V85 C100 93 77.5 100 50 100 S0 93 0 85 Z"
+                fill={fillColor || '#e0ebff'}
+                stroke="#bae6fd"
+                strokeWidth="2"
+              />
+              <ellipse cx="50" cy="15" rx="50" ry="15" fill={fillColor || '#e0ebff'} stroke="#bae6fd" strokeWidth="2" />
+            </svg>
+          </div>
+        )}
         <div className={contentClass} style={contentStyle}>
           {kind === 'file' && (
             <div className="pointer-events-none absolute right-3 top-3 h-6 w-6 text-slate-600" aria-hidden>
@@ -149,11 +174,11 @@ export const StepNode = ({ id, data, selected }: NodeProps<StepNodeData>) => {
               </svg>
             </div>
           )}
-          <span className="font-semibold whitespace-pre-line break-words" style={{ color }}>
+          <span className="font-semibold whitespace-pre-line break-words relative z-10" style={{ color }}>
             {title || '無題のステップ'}
           </span>
           {description && (
-            <p className="mt-2 whitespace-pre-line break-words text-xs text-slate-500">
+            <p className="mt-2 whitespace-pre-line break-words text-xs text-slate-500 relative z-10">
               {description}
             </p>
           )}

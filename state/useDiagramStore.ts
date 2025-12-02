@@ -39,6 +39,8 @@ const KIND_DIMENSIONS: Record<StepKind, { width: number; height: number }> = {
   start: { width: 220, height: 110 },
   end: { width: 220, height: 110 },
   file: { width: STEP_DEFAULT_SIZE.width, height: STEP_DEFAULT_SIZE.height },
+  loop: { width: 220, height: 110 },
+  database: { width: 220, height: 110 },
 };
 
 const KIND_COLORS: Record<StepKind, string> = {
@@ -47,6 +49,8 @@ const KIND_COLORS: Record<StepKind, string> = {
   start: '#000000',
   end: '#000000',
   file: '#000000',
+  loop: '#000000',
+  database: '#000000',
 };
 
 const KIND_FILL_COLORS: Record<StepKind, string> = {
@@ -55,6 +59,8 @@ const KIND_FILL_COLORS: Record<StepKind, string> = {
   start: '#c2ffd8',
   end: '#ffd1d1',
   file: '#fff4ad',
+  loop: '#e0ebff',
+  database: '#e0ebff',
 };
 
 interface DiagramStore {

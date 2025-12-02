@@ -6,6 +6,8 @@ const STEP_KIND_FILL: Record<StepKind, string> = {
   start: '#dcfce7',
   end: '#fee2e2',
   file: '#f0f9ff',
+  loop: '#e0ebff',
+  database: '#e0ebff',
 };
 
 const escapeLabel = (text: string) => text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -104,6 +106,33 @@ export const exportDiagramToMermaid = (diagram: Diagram): string => {
       lines.push(`    style ${stepAlias} fill:${fillColor},stroke:${strokeColor},color:${textColor}`);
       if (step.kind === 'file') {
         lines.push(`    class ${stepAlias} file`);
+      }
+      if (step.kind === 'loop') {
+        // Replace default rect shape with trapezoid
+        // Mermaid syntax for trapezoid: id[\"label"/]
+        const lastIndex = lines.length - 1;
+        // Find the line defining the node: stepAlias["label"]
+        // We need to replace ["..."] with [\"..."/]
+        // Note: Mermaid doesn't support inverted trapezoid easily with standard flowchart shapes in all versions,
+        // but [\ ... /] is the syntax for trapezoid (inverted).
+        // Actually, standard trapezoid is [/ ... \], inverted is [\ ... /].
+        // Let's use [\ ... /] for Loop Start/End as requested (inverted trapezoid).
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (lines[i].includes(`${stepAlias}["`)) {
+            lines[i] = lines[i].replace(`${stepAlias}["`, `${stepAlias}[\\"`).replace(`"]`, `"/]`);
+            break;
+          }
+        }
+      }
+      if (step.kind === 'database') {
+        // Replace default rect shape with cylinder
+        // Mermaid syntax for cylinder: id[(label)]
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (lines[i].includes(`${stepAlias}["`)) {
+            lines[i] = lines[i].replace(`${stepAlias}["`, `${stepAlias}[("`).replace(`"]`, `")]`);
+            break;
+          }
+        }
       }
     });
 

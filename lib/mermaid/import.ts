@@ -13,7 +13,7 @@ import {
 } from '@/lib/diagram/layout';
 import type { Connection, Diagram, Lane, MarkerKind, PhaseGroup, Step, StepKind } from '@/lib/diagram/types';
 
-class MermaidParseError extends Error {}
+class MermaidParseError extends Error { }
 
 const KIND_COLORS: Record<StepKind, string> = {
   process: '#1f2937',
@@ -21,10 +21,12 @@ const KIND_COLORS: Record<StepKind, string> = {
   start: '#16a34a',
   end: '#dc2626',
   file: '#0ea5e9',
+  loop: '#1f2937',
+  database: '#1f2937',
 };
 
 const isStepKind = (value: unknown): value is StepKind =>
-  value === 'process' || value === 'decision' || value === 'start' || value === 'end' || value === 'file';
+  value === 'process' || value === 'decision' || value === 'start' || value === 'end' || value === 'file' || value === 'loop' || value === 'database';
 
 const parseJsonMeta = (label: string, value?: string) => {
   if (!value) return null;
@@ -75,7 +77,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       .sort((a, b) => a.order - b.order)
       .map((lane, index): Lane => ({ ...lane, order: index }));
     const laneMap = new Map(sanitizedLanes.map((lane) => [lane.id, lane] as const));
-  const persistedOrientation = parseOrientation(persistedState.orientation ?? metaOrientation);
+    const persistedOrientation = parseOrientation(persistedState.orientation ?? metaOrientation);
     const sanitizedSteps = (persistedState.steps as Step[])
       .map((step, index) => sanitizeStep(step, sanitizedLanes, index, persistedOrientation))
       .filter((step): step is Step => laneMap.has(step.laneId));
@@ -84,9 +86,9 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       .filter((connection): connection is Connection => Boolean(connection));
     const sanitizedPhases = Array.isArray(persistedState.phaseGroups)
       ? (persistedState.phaseGroups as PhaseGroup[])
-          .map((phase, index) => sanitizePhaseGroup(phase, index))
-          .filter(Boolean)
-          .sort((a, b) => a.startRow - b.startRow)
+        .map((phase, index) => sanitizePhaseGroup(phase, index))
+        .filter(Boolean)
+        .sort((a, b) => a.startRow - b.startRow)
       : [];
 
     const now = new Date().toISOString();
@@ -131,7 +133,16 @@ export const importMermaidToDiagram = (content: string): Diagram => {
     };
     lanes.push(lane);
 
-    const stepRegex = /([A-Za-z0-9_-]+)\s*\["([^"]*)"\]\s*(?:\n\s*%%\s*step-meta:(.+))?/g;
+    // Updated regex to support different node shapes:
+    // ["..."] (rect), (["..."]) (stadium), [("...")] (cylinder), [\"..."/] (trapezoid inv), etc.
+    // We match the ID, then any opening bracket sequence, then the content in quotes, then closing bracket sequence.
+    // Simplified regex: ID\s*([\[\(\{\/]+)"([^"]*)"([\]\)\}\/]+)
+    // However, the existing regex was: /([A-Za-z0-9_-]+)\s*\["([^"]*)"\]\s*(?:\n\s*%%\s*step-meta:(.+))?/g
+    // We need to be more flexible.
+    // Let's try: /([A-Za-z0-9_-]+)\s*(?:\["|\[\(\"|\[\/"|\[\\"|\[\)\")([^"]*)(?:"\]|"\)\]|"/\]|"\/\]|"\)\])\s*(?:\n\s*%%\s*step-meta:(.+))?/g
+    // This is getting complicated. Let's use a more generic approach for the brackets.
+    // Match ID followed by some opening brackets, quote, content, quote, closing brackets.
+    const stepRegex = /([A-Za-z0-9_-]+)\s*[\[\(\{]+[\\\/]?"([^"]*)"[\\\/]?[\]\)\}]+(?:\s*\n\s*%%\s*step-meta:(.+))?/g;
     let stepMatch: RegExpExecArray | null;
     while ((stepMatch = stepRegex.exec(laneBody)) !== null) {
       const [, stepAlias, stepTitleRaw, stepMetaRaw] = stepMatch;
@@ -148,13 +159,13 @@ export const importMermaidToDiagram = (content: string): Diagram => {
         orientation === 'horizontal'
           ? typeof stepMeta.x === 'number'
             ? Math.max(
-                0,
-                columnIndexFromX(stepMeta.x - HORIZONTAL_HEADER_WIDTH, width)
-              )
+              0,
+              columnIndexFromX(stepMeta.x - HORIZONTAL_HEADER_WIDTH, width)
+            )
             : undefined
           : typeof stepMeta.y === 'number'
-          ? Math.max(0, rowIndexFromY(stepMeta.y, height))
-          : undefined;
+            ? Math.max(0, rowIndexFromY(stepMeta.y, height))
+            : undefined;
       const order = Math.max(
         0,
         Math.floor(
@@ -170,9 +181,9 @@ export const importMermaidToDiagram = (content: string): Diagram => {
       const defaultX =
         orientation === 'horizontal'
           ? HORIZONTAL_HEADER_WIDTH +
-            LANE_PADDING +
-            horizontalColumnLeft(order) +
-            Math.max(0, (COLUMN_WIDTH - width) / 2)
+          LANE_PADDING +
+          horizontalColumnLeft(order) +
+          Math.max(0, (COLUMN_WIDTH - width) / 2)
           : deriveStepX(lanes, lane.order, width);
       const defaultY =
         orientation === 'horizontal'
@@ -182,14 +193,14 @@ export const importMermaidToDiagram = (content: string): Diagram => {
         typeof userX === 'number'
           ? userX
           : typeof stepMeta.x === 'number'
-          ? stepMeta.x
-          : defaultX;
+            ? stepMeta.x
+            : defaultX;
       const y =
         typeof userY === 'number'
           ? userY
           : typeof stepMeta.y === 'number'
-          ? stepMeta.y
-          : defaultY;
+            ? stepMeta.y
+            : defaultY;
       const color = stepMeta.color ?? KIND_COLORS[kind] ?? '#1f2937';
 
       const step: Step = {
@@ -255,29 +266,29 @@ export const importMermaidToDiagram = (content: string): Diagram => {
     let markerSize: number | undefined;
     if (metaIndex !== -1) {
       const meta = edgeMetas.splice(metaIndex, 1)[0];
-        if (meta) {
-          sourceHandle = typeof meta.sourceHandle === 'string' && meta.sourceHandle.length ? meta.sourceHandle : undefined;
-          targetHandle = typeof meta.targetHandle === 'string' && meta.targetHandle.length ? meta.targetHandle : undefined;
-          if (meta.control && typeof (meta.control as { x?: unknown; y?: unknown }).x === 'number' && typeof (meta.control as { x?: unknown; y?: unknown }).y === 'number') {
-            control = {
-              x: (meta.control as { x: number; y: number }).x,
-              y: (meta.control as { x: number; y: number }).y,
-            };
-          }
-          if (meta.startMarker === 'none' || meta.startMarker === 'arrow' || meta.startMarker === 'dot') {
-            startMarker = meta.startMarker;
-          }
-          if (meta.endMarker === 'none' || meta.endMarker === 'arrow' || meta.endMarker === 'dot') {
-            endMarker = meta.endMarker;
-          }
-          if (typeof meta.markerSize === 'number') {
-            markerSize = meta.markerSize;
-          }
-          if (typeof meta.label === 'string') {
-            label = meta.label.slice(0, 50);
-          }
+      if (meta) {
+        sourceHandle = typeof meta.sourceHandle === 'string' && meta.sourceHandle.length ? meta.sourceHandle : undefined;
+        targetHandle = typeof meta.targetHandle === 'string' && meta.targetHandle.length ? meta.targetHandle : undefined;
+        if (meta.control && typeof (meta.control as { x?: unknown; y?: unknown }).x === 'number' && typeof (meta.control as { x?: unknown; y?: unknown }).y === 'number') {
+          control = {
+            x: (meta.control as { x: number; y: number }).x,
+            y: (meta.control as { x: number; y: number }).y,
+          };
+        }
+        if (meta.startMarker === 'none' || meta.startMarker === 'arrow' || meta.startMarker === 'dot') {
+          startMarker = meta.startMarker;
+        }
+        if (meta.endMarker === 'none' || meta.endMarker === 'arrow' || meta.endMarker === 'dot') {
+          endMarker = meta.endMarker;
+        }
+        if (typeof meta.markerSize === 'number') {
+          markerSize = meta.markerSize;
+        }
+        if (typeof meta.label === 'string') {
+          label = meta.label.slice(0, 50);
         }
       }
+    }
 
     connections.push({
       id: nanoid(),
@@ -308,7 +319,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
   };
 };
 
-export class MermaidImportError extends MermaidParseError {}
+export class MermaidImportError extends MermaidParseError { }
 const sanitizeLane = (lane: Lane, index: number): Lane => ({
   id: typeof lane.id === 'string' ? lane.id : nanoid(),
   title: typeof lane.title === 'string' ? lane.title : `レーン ${index + 1}`,
@@ -330,7 +341,7 @@ const sanitizeStep = (
       ? step.laneId
       : fallbackLane?.id ?? nanoid();
   const lane = lanes.find((item) => item.id === laneId) ?? fallbackLane;
-  const kind: StepKind = step.kind === 'decision' || step.kind === 'start' || step.kind === 'end' || step.kind === 'file' ? step.kind : 'process';
+  const kind: StepKind = isStepKind(step.kind) ? step.kind : 'process';
   const width = typeof step.width === 'number' ? step.width : 240;
   const height = typeof step.height === 'number' ? step.height : 120;
   const order = Math.max(
@@ -339,19 +350,19 @@ const sanitizeStep = (
       typeof step.order === 'number'
         ? step.order
         : orientation === 'horizontal' && typeof step.x === 'number'
-        ? columnIndexFromX(step.x - HORIZONTAL_HEADER_WIDTH, width)
-        : orientation === 'vertical' && typeof step.y === 'number'
-        ? rowIndexFromY(step.y, height)
-        : index
+          ? columnIndexFromX(step.x - HORIZONTAL_HEADER_WIDTH, width)
+          : orientation === 'vertical' && typeof step.y === 'number'
+            ? rowIndexFromY(step.y, height)
+            : index
     )
   );
   const laneOrder = lane?.order ?? 0;
   const defaultX =
     orientation === 'horizontal'
       ? HORIZONTAL_HEADER_WIDTH +
-        LANE_PADDING +
-        horizontalColumnLeft(order) +
-        Math.max(0, (COLUMN_WIDTH - width) / 2)
+      LANE_PADDING +
+      horizontalColumnLeft(order) +
+      Math.max(0, (COLUMN_WIDTH - width) / 2)
       : deriveStepX(lanes, laneOrder, width);
   const defaultY =
     orientation === 'horizontal'

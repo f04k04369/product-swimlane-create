@@ -24,7 +24,7 @@ export interface Step {
   kind: StepKind;
 }
 
-export type StepKind = 'process' | 'decision' | 'start' | 'end' | 'file';
+export type StepKind = 'process' | 'decision' | 'start' | 'end' | 'file' | 'loop' | 'database';
 
 export type MarkerKind = 'none' | 'arrow' | 'dot';
 
