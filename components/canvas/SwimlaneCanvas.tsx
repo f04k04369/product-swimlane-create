@@ -32,6 +32,7 @@ import {
   LANE_PADDING,
   LANE_WIDTH,
   ROW_HEIGHT,
+  VERTICAL_ROW_HEIGHT,
   columnIndexFromX,
   rowIndexFromY,
   resolveLaneIndex,
@@ -83,7 +84,9 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
   const scrollToTopCounter = useDiagramStore((state) => state.scrollToTopCounter);
   const addPhaseGroup = useDiagramStore((state) => state.addPhaseGroup);
   const updatePhaseGroup = useDiagramStore((state) => state.updatePhaseGroup);
-  const { project, setViewport, getViewport, setNodes } = useReactFlow();
+  const copySelection = useDiagramStore((state) => state.copySelection);
+  const pasteClipboard = useDiagramStore((state) => state.pasteClipboard);
+  const { project, setViewport, getViewport } = useReactFlow();
   const [phaseResize, setPhaseResize] = useState<PhaseResizeState | null>(null);
   const [selectedPhaseRow, setSelectedPhaseRow] = useState<number | null>(null);
 
@@ -111,6 +114,15 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         event.preventDefault();
         return true;
       });
+
+      if ((event.metaKey || event.ctrlKey) && event.code === 'KeyC') {
+        event.preventDefault();
+        copySelection();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.code === 'KeyV') {
+        event.preventDefault();
+        pasteClipboard();
+      }
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -131,7 +143,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleWindowBlur);
     };
-  }, []);
+  }, [copySelection, pasteClipboard]);
 
   const laneMap = useMemo(() => {
     const map = new Map<string, { title: string; color: string; order: number }>();
@@ -145,7 +157,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
 
   const orientation = diagram.orientation ?? 'vertical';
   const isHorizontal = orientation === 'horizontal';
-  const rowSize = isHorizontal ? HORIZONTAL_COLUMN_WIDTH : ROW_HEIGHT;
+  const rowSize = isHorizontal ? HORIZONTAL_COLUMN_WIDTH : VERTICAL_ROW_HEIGHT;
 
   const laneSpans = useMemo(() => {
     const map = new Map<string, number>();
@@ -215,6 +227,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
           isSelected,
           pendingRow: pendingInsert?.laneId === lane.id ? pendingInsert.row : null,
           rowHeight: rowSize,
+          highlightWidth: rowSize,
           lanePadding: lanePaddingValue,
           orientation,
           onRowHandleClick: handleLaneRowSelect,
@@ -783,42 +796,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
       clearPendingInsert();
       setSelection({ lanes: moved ? [moved.laneId] : [], steps: [node.id], connections: [] });
     },
-    [clearPendingInsert, isHorizontal, laneContentOffsetX, lanePaddingValue, moveStep, resolveLaneIndex, resolveLaneIndexByY, rowSize, setSelection, sortedLanes]
-  );
-
-  const handleNodeDrag = useCallback(
-    (_: MouseEvent, node: Node) => {
-      if (node.type !== 'step') return;
-
-      const { diagram: current } = useDiagramStore.getState();
-      const step = current.steps.find((s) => s.id === node.id);
-      if (!step) return;
-
-      if (isHorizontal) {
-        const diagramX = node.position.x - laneContentOffsetX - lanePaddingValue;
-        const column = Math.max(0, Math.round(diagramX / rowSize));
-
-        // Find the lane based on Y position
-        const centerY = node.position.y + step.height / 2;
-        const laneIndex = resolveLaneIndexByY(sortedLanes, centerY);
-        const lane = sortedLanes[laneIndex];
-        if (lane) {
-          setPendingInsert(lane.id, column);
-        }
-      } else {
-        const diagramY = node.position.y - lanePaddingValue;
-        const row = Math.max(0, Math.round(diagramY / rowSize));
-
-        // Find the lane based on X position
-        const centerX = node.position.x + step.width / 2;
-        const laneIndex = resolveLaneIndex(sortedLanes, centerX);
-        const lane = sortedLanes[laneIndex];
-        if (lane) {
-          setPendingInsert(lane.id, row);
-        }
-      }
-    },
-    [isHorizontal, laneContentOffsetX, lanePaddingValue, resolveLaneIndex, resolveLaneIndexByY, rowSize, setPendingInsert, sortedLanes]
+    [clearPendingInsert, isHorizontal, laneContentOffsetX, lanePaddingValue, moveStep, rowSize, setSelection, sortedLanes]
   );
 
   const handleConnect = useCallback(

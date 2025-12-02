@@ -62,7 +62,17 @@ export const StepNode = ({ id, data, selected, dragging }: NodeProps<StepNodeDat
         contentStyle.zIndex = 1;
         return classNames(baseContentClass, stateClass, 'relative overflow-hidden');
       case 'loop':
-        contentStyle.clipPath = 'polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%)';
+      case 'loopStart':
+        contentStyle.clipPath = isHorizontal
+          ? 'polygon(0% 20%, 100% 0%, 100% 100%, 0% 80%)'
+          : 'polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%)';
+        contentStyle.backgroundColor = fillColor || '#e0ebff';
+        contentStyle.border = '1px solid #bae6fd';
+        return classNames(baseContentClass, stateClass);
+      case 'loopEnd':
+        contentStyle.clipPath = isHorizontal
+          ? 'polygon(0% 0%, 100% 20%, 100% 80%, 0% 100%)'
+          : 'polygon(0% 0%, 100% 0%, 80% 100%, 20% 100%)';
         contentStyle.backgroundColor = fillColor || '#e0ebff';
         contentStyle.border = '1px solid #bae6fd';
         return classNames(baseContentClass, stateClass);

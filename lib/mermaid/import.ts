@@ -22,6 +22,8 @@ const KIND_COLORS: Record<StepKind, string> = {
   end: '#dc2626',
   file: '#0ea5e9',
   loop: '#1f2937',
+  loopStart: '#1f2937',
+  loopEnd: '#1f2937',
   database: '#1f2937',
 };
 

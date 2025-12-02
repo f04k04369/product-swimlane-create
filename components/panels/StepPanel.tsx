@@ -14,7 +14,6 @@ import {
   DragStartEvent,
 } from '@dnd-kit/core';
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -481,7 +480,8 @@ const StepPanelInner = () => {
             <option value="start">開始</option>
             <option value="end">終了</option>
             <option value="file">ファイル処理</option>
-            <option value="loop">ループ開始/終了</option>
+            <option value="loopStart">ループ開始</option>
+            <option value="loopEnd">ループ終了</option>
             <option value="database">データベース・システム</option>
           </select>
         </div>

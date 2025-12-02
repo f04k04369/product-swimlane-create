@@ -5,6 +5,7 @@ export const LANE_WIDTH = 320;
 export const LANE_GAP = 0;
 export const LANE_PADDING = 80;
 export const ROW_HEIGHT = 240;
+export const VERTICAL_ROW_HEIGHT = 60; // ROW_HEIGHT / 4
 export const LANE_COLUMN_HEIGHT = LANE_PADDING * 2 + ROW_HEIGHT;
 export const COLUMN_WIDTH = 240;
 export const HORIZONTAL_HEADER_WIDTH = 200;
@@ -46,11 +47,12 @@ export const deriveStepX = (lanes: Lane[], order: number, stepWidth: number) =>
 export const rowIndexFromY = (value: number, stepHeight: number) => {
   const adjusted = value - LANE_PADDING + stepHeight / 2;
   if (adjusted <= 0) return 0;
-  return Math.floor(adjusted / ROW_HEIGHT);
+  if (adjusted <= 0) return 0;
+  return Math.floor(adjusted / VERTICAL_ROW_HEIGHT);
 };
 
 export const yForRow = (row: number, stepHeight: number) =>
-  LANE_PADDING + row * ROW_HEIGHT + Math.max(0, (ROW_HEIGHT - stepHeight) / 2);
+  LANE_PADDING + row * VERTICAL_ROW_HEIGHT + Math.max(0, (VERTICAL_ROW_HEIGHT - stepHeight) / 2);
 
 export const deriveLanePositionY = (lanes: Lane[], order: number) => {
   const ordered = sortedByOrder(lanes);
@@ -117,7 +119,7 @@ export const computeLaneHeight = (laneSteps: Step[]): number => {
   const minHeight = LANE_PADDING * 2 + ROW_HEIGHT;
   if (!laneSteps.length) return minHeight;
   const maxRow = laneSteps.reduce((acc, step) => Math.max(acc, Math.max(0, Math.round(step.order))), 0);
-  return Math.max(minHeight, LANE_PADDING * 2 + (maxRow + 1) * ROW_HEIGHT);
+  return Math.max(minHeight, LANE_PADDING * 2 + (maxRow + 1) * VERTICAL_ROW_HEIGHT);
 };
 
 export const computeLaneWidth = (laneSteps: Step[]): number => {

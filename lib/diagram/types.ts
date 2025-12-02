@@ -24,7 +24,7 @@ export interface Step {
   kind: StepKind;
 }
 
-export type StepKind = 'process' | 'decision' | 'start' | 'end' | 'file' | 'loop' | 'database';
+export type StepKind = 'process' | 'decision' | 'start' | 'end' | 'file' | 'loop' | 'loopStart' | 'loopEnd' | 'database';
 
 export type MarkerKind = 'none' | 'arrow' | 'dot';
 
@@ -78,7 +78,7 @@ export interface DiagramHistoryEntry {
 export interface AuditEntry {
   id: string;
   action: string;
-  targetType: 'lane' | 'step' | 'connection' | 'diagram';
+  targetType: 'lane' | 'step' | 'connection' | 'diagram' | 'phase_group';
   targetId?: ElementID;
   payload?: Record<string, unknown>;
   timestamp: number;
