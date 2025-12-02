@@ -1,7 +1,26 @@
 'use client';
 
-import { ChangeEvent, DragEvent, useMemo, useState } from 'react';
+import { ChangeEvent, useMemo, useState } from 'react';
 import classNames from 'classnames';
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
 import { useDiagramStore } from '@/state/useDiagramStore';
 import { Button } from '@/components/ui/button';
 import { RowShiftPanel } from '@/components/panels/RowShiftPanel';
@@ -16,6 +35,58 @@ const numberInputStyles = `${inputStyles} text-right`;
 const handleNumber = (event: ChangeEvent<HTMLInputElement>, fallback = 0) => {
   const value = Number(event.target.value);
   return Number.isFinite(value) ? value : fallback;
+};
+
+interface SortableStepItemProps {
+  step: { id: string; title: string; order: number; laneId: string };
+  index: number;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+const SortableStepItem = ({ step, index, isSelected, onSelect }: SortableStepItemProps) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={onSelect}
+      className={classNames(
+        'flex items-center justify-between rounded-md border px-3 py-2 text-xs transition touch-none',
+        {
+          'opacity-30': isDragging,
+          'border-primary bg-primary/10 text-primary': isSelected,
+          'border-border bg-white text-slate-700': !isSelected,
+          'hover:border-primary/50': !isSelected && !isDragging,
+        }
+      )}
+    >
+      <span className="mr-2 truncate">{step.title || `ステップ ${index + 1}`}</span>
+      <span className="text-[10px] font-medium text-slate-400">行 {step.order + 1}</span>
+    </li>
+  );
+};
+
+const StepItemOverlay = ({ step, index }: { step: { title: string; order: number }; index: number }) => {
+  return (
+    <div
+      className={classNames(
+        'flex items-center justify-between rounded-md border px-3 py-2 text-xs shadow-xl cursor-grabbing',
+        'border-primary bg-white text-primary'
+      )}
+    >
+      <span className="mr-2 truncate">{step.title || `ステップ ${index + 1}`}</span>
+      <span className="text-[10px] font-medium text-slate-400">行 {step.order + 1}</span>
+    </div>
+  );
 };
 
 const StepPanelInner = () => {
@@ -50,7 +121,7 @@ const StepPanelInner = () => {
     [connections, selectedConnectionId]
   );
 
-  const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   const laneOrderMap = useMemo(() => new Map(lanes.map((lane) => [lane.id, lane.order] as const)), [lanes]);
 
@@ -72,6 +143,38 @@ const StepPanelInner = () => {
       .slice()
       .sort((a, b) => a.order - b.order);
   }, [selectedStep, steps]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+    clearPendingInsert();
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (over && active.id !== over.id) {
+      const oldIndex = laneStepsOrdered.findIndex((item) => item.id === active.id);
+      const newIndex = laneStepsOrdered.findIndex((item) => item.id === over.id);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        reorderStep(active.id as string, newIndex);
+        // 選択状態を維持
+        setSelection({ lanes: [selectedStep!.laneId], steps: [active.id as string], connections: [] });
+      }
+    }
+  };
 
   if (!selectedStep && !selectedConnection) {
     if (pendingInsert) {
@@ -306,55 +409,6 @@ const StepPanelInner = () => {
   const canMoveUp = selectedStep.order > 0;
   const canMoveDown = currentIndex !== -1;
 
-  const handleStepDragStart = (event: DragEvent<HTMLLIElement>, stepId: string) => {
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', stepId);
-    clearPendingInsert();
-    setDraggedStepId(stepId);
-  };
-
-  const handleStepDragEnd = () => {
-    setDraggedStepId(null);
-  };
-
-  const persistSelectionFor = (stepId: string) => {
-    const { diagram: latest } = useDiagramStore.getState();
-    const target = latest.steps.find((step) => step.id === stepId);
-    if (target) {
-      clearPendingInsert();
-      setSelection({ lanes: [target.laneId], steps: [target.id], connections: [] });
-    }
-  };
-
-  const handleStepDrop = (event: DragEvent<HTMLLIElement>, index: number) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const draggedId = event.dataTransfer.getData('text/plain');
-    if (!draggedId) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const dropAfter = event.clientY - rect.top > rect.height / 2;
-    const targetIndex = dropAfter ? index + 1 : index;
-    clearPendingInsert();
-    reorderStep(draggedId, targetIndex);
-    persistSelectionFor(draggedId);
-    setDraggedStepId(null);
-  };
-
-  const handleListDrop = (event: DragEvent<HTMLUListElement>) => {
-    event.preventDefault();
-    const draggedId = event.dataTransfer.getData('text/plain');
-    if (!draggedId) return;
-    clearPendingInsert();
-    reorderStep(draggedId, laneStepsOrdered.length);
-    persistSelectionFor(draggedId);
-    setDraggedStepId(null);
-  };
-
-  const handleListDragOver = (event: DragEvent<HTMLUListElement>) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  };
-
   const handleLaneChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const nextLaneId = event.target.value;
     const laneIndex = lanes.findIndex((lane) => lane.id === nextLaneId);
@@ -378,10 +432,8 @@ const StepPanelInner = () => {
     setSelection({ lanes: [selectedStep.laneId], steps: [selectedStep.id], connections: [] });
   };
 
-  const handleStepDragOverItem = (event: DragEvent<HTMLLIElement>) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  };
+  const activeStep = activeId ? laneStepsOrdered.find((step) => step.id === activeId) : null;
+  const activeIndex = activeStep ? laneStepsOrdered.indexOf(activeStep) : -1;
 
   return (
     <aside className="flex h-full w-80 flex-col border-l border-border bg-white">
@@ -428,6 +480,9 @@ const StepPanelInner = () => {
             <option value="start">開始</option>
             <option value="end">終了</option>
             <option value="file">ファイル処理</option>
+            <option value="loopStart">ループ開始</option>
+            <option value="loopEnd">ループ終了</option>
+            <option value="database">データベース・システム</option>
           </select>
         </div>
         <div>
@@ -443,38 +498,32 @@ const StepPanelInner = () => {
         </div>
         <div>
           <label className="text-xs font-medium text-slate-500">レーン内の順序</label>
-          <ul
-            className="mt-2 space-y-1"
-            onDragOver={handleListDragOver}
-            onDrop={handleListDrop}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
           >
-            {laneStepsOrdered.map((step, index) => (
-              <li
-                key={step.id}
-                draggable
-                onDragStart={(event) => handleStepDragStart(event, step.id)}
-                onDragEnd={handleStepDragEnd}
-                onDrop={(event) => handleStepDrop(event, index)}
-                onDragOver={handleStepDragOverItem}
-                onClick={() => {
-                  clearPendingInsert();
-                  setSelection({ lanes: [step.laneId], steps: [step.id], connections: [] });
-                }}
-                className={classNames(
-                  'flex items-center justify-between rounded-md border px-3 py-2 text-xs transition',
-                  {
-                    'cursor-grabbing opacity-70': draggedStepId === step.id,
-                    'cursor-grab': draggedStepId !== step.id,
-                    'border-primary bg-primary/10 text-primary': step.id === selectedStep.id,
-                    'border-border bg-white text-slate-700': step.id !== selectedStep.id,
-                  }
-                )}
-              >
-                <span className="mr-2 truncate">{step.title || `ステップ ${index + 1}`}</span>
-                <span className="text-[10px] font-medium text-slate-400">行 {step.order + 1}</span>
-              </li>
-            ))}
-          </ul>
+            <SortableContext items={laneStepsOrdered.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              <ul className="mt-2 space-y-1">
+                {laneStepsOrdered.map((step, index) => (
+                  <SortableStepItem
+                    key={step.id}
+                    step={step}
+                    index={index}
+                    isSelected={step.id === selectedStep.id}
+                    onSelect={() => {
+                      clearPendingInsert();
+                      setSelection({ lanes: [step.laneId], steps: [step.id], connections: [] });
+                    }}
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+            <DragOverlay>
+              {activeStep ? <StepItemOverlay step={activeStep} index={activeIndex} /> : null}
+            </DragOverlay>
+          </DndContext>
           <p className="mt-1 text-[11px] text-slate-400">
             ドラッグ＆ドロップで呼び順を詰め替えると、行番号が連番に再配置されます。
           </p>

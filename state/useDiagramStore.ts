@@ -39,6 +39,10 @@ const KIND_DIMENSIONS: Record<StepKind, { width: number; height: number }> = {
   start: { width: 220, height: 110 },
   end: { width: 220, height: 110 },
   file: { width: STEP_DEFAULT_SIZE.width, height: STEP_DEFAULT_SIZE.height },
+  loop: { width: 220, height: 110 },
+  loopStart: { width: 220, height: 110 },
+  loopEnd: { width: 220, height: 110 },
+  database: { width: 220, height: 110 },
 };
 
 const KIND_COLORS: Record<StepKind, string> = {
@@ -47,6 +51,10 @@ const KIND_COLORS: Record<StepKind, string> = {
   start: '#000000',
   end: '#000000',
   file: '#000000',
+  loop: '#000000',
+  loopStart: '#000000',
+  loopEnd: '#000000',
+  database: '#000000',
 };
 
 const KIND_FILL_COLORS: Record<StepKind, string> = {
@@ -55,6 +63,10 @@ const KIND_FILL_COLORS: Record<StepKind, string> = {
   start: '#c2ffd8',
   end: '#ffd1d1',
   file: '#fff4ad',
+  loop: '#e0ebff',
+  loopStart: '#e0ebff',
+  loopEnd: '#e0ebff',
+  database: '#e0ebff',
 };
 
 interface DiagramStore {
@@ -67,6 +79,7 @@ interface DiagramStore {
   canUndo: boolean;
   canRedo: boolean;
   pendingInsert: { laneId: ElementID; row: number } | null;
+  clipboard: Step[];
   scrollToTopCounter: number;
   setDiagram: (diagram: Diagram, options?: { label?: string; preserveLayout?: boolean }) => void;
   initializeDiagram: (orientation: DiagramOrientation) => void;
@@ -117,6 +130,8 @@ interface DiagramStore {
   addPhaseGroup: (startRow: number, endRow: number, title: string) => string;
   updatePhaseGroup: (id: ElementID, updates: Partial<Omit<PhaseGroup, 'id'>>) => void;
   removePhaseGroup: (id: ElementID) => void;
+  copySelection: () => void;
+  pasteClipboard: () => void;
   requestScrollToTop: () => void;
   undo: () => void;
   redo: () => void;
@@ -254,6 +269,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
     canUndo: false,
     canRedo: false,
     pendingInsert: null,
+    clipboard: [],
     scrollToTopCounter: 0,
 
     setDiagram: (diagram, options) => {
@@ -289,7 +305,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           height,
           kind: step.kind ?? 'process',
           color: step.color ?? '#000000',
-          fillColor: step.fillColor ?? KIND_FILL_COLORS[(step.kind ?? 'process') as StepKind] ?? '#e0ebff',
+          fillColor: KIND_FILL_COLORS[(step.kind ?? 'process') as StepKind] ?? '#e0ebff',
           x: preserveLayout && typeof step.x === 'number' ? step.x : 0,
           y: preserveLayout && typeof step.y === 'number' ? step.y : 0,
         };
@@ -361,6 +377,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           canUndo: false,
           canRedo: false,
           pendingInsert: null,
+          clipboard: [],
         };
       });
       if (initialized) {
@@ -1032,8 +1049,75 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
     removePhaseGroup: (id) => {
       commit((draft) => {
         draft.phaseGroups = draft.phaseGroups.filter((phase) => phase.id !== id);
-      }, 'remove phase');
+      }, 'remove phase group', {
+        action: 'remove_phase_group',
+        targetType: 'phase_group',
+        targetId: id,
+      });
     },
+
+    copySelection: () => {
+      const { diagram, selection } = get();
+      if (!selection.steps.length) return;
+      const stepsToCopy = diagram.steps.filter((step) => selection.steps.includes(step.id));
+      set({ clipboard: stepsToCopy });
+    },
+
+    pasteClipboard: () => {
+      const { clipboard, pendingInsert } = get();
+      if (!clipboard.length) return;
+
+      const pastedIds: string[] = [];
+      commit((draft) => {
+        // Calculate min order to preserve relative spacing
+        const minOrder = Math.min(...clipboard.map((s) => s.order));
+
+        clipboard.forEach((original) => {
+          let targetLaneId = original.laneId;
+          let targetOrder = original.order + 1;
+
+          if (pendingInsert) {
+            targetLaneId = pendingInsert.laneId;
+            targetOrder = pendingInsert.row + (original.order - minOrder);
+          }
+
+          const lane = draft.lanes.find((l) => l.id === targetLaneId) ?? draft.lanes[0];
+          if (!lane) return;
+
+          const newStep: Step = {
+            ...original,
+            id: nanoid(),
+            laneId: lane.id,
+            order: targetOrder,
+            title: `${original.title} (コピー)`,
+          };
+
+          // Shift existing steps down to make room
+          draft.steps
+            .filter((s) => s.laneId === lane.id && s.order >= newStep.order)
+            .forEach((s) => {
+              s.order += 1;
+            });
+
+          draft.steps.push(newStep);
+          layoutLaneSteps(draft, lane.id);
+          pastedIds.push(newStep.id);
+        });
+        sortSteps(draft);
+      }, 'paste steps', {
+        action: 'paste_steps',
+        targetType: 'step',
+        payload: { count: clipboard.length, target: pendingInsert ? 'pending' : 'original' },
+      });
+
+      if (pastedIds.length) {
+        set({
+          selection: { lanes: [], steps: pastedIds, connections: [], phases: [] },
+          pendingInsert: null, // Clear pending insert after paste
+        });
+      }
+    },
+
     requestScrollToTop: () => {
       set((state) => ({ scrollToTopCounter: state.scrollToTopCounter + 1 }));
     },

@@ -6,6 +6,10 @@ const STEP_KIND_FILL: Record<StepKind, string> = {
   start: '#dcfce7',
   end: '#fee2e2',
   file: '#f0f9ff',
+  loop: '#e0ebff',
+  loopStart: '#e0ebff',
+  loopEnd: '#e0ebff',
+  database: '#e0ebff',
 };
 
 const escapeLabel = (text: string) => text.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
@@ -104,6 +108,36 @@ export const exportDiagramToMermaid = (diagram: Diagram): string => {
       lines.push(`    style ${stepAlias} fill:${fillColor},stroke:${strokeColor},color:${textColor}`);
       if (step.kind === 'file') {
         lines.push(`    class ${stepAlias} file`);
+      }
+      if (step.kind === 'loop' || step.kind === 'loopStart') {
+        // Replace default rect shape with trapezoid
+        // Mermaid syntax for trapezoid: id[/label\]
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (lines[i].includes(`${stepAlias}["`)) {
+            lines[i] = lines[i].replace(`${stepAlias}["`, `${stepAlias}[/`).replace(`"]`, `"\\]`);
+            break;
+          }
+        }
+      }
+      if (step.kind === 'loopEnd') {
+        // Replace default rect shape with inverted trapezoid
+        // Mermaid syntax for inverted trapezoid: id[\label/]
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (lines[i].includes(`${stepAlias}["`)) {
+            lines[i] = lines[i].replace(`${stepAlias}["`, `${stepAlias}[\\`).replace(`"]`, `"/]`);
+            break;
+          }
+        }
+      }
+      if (step.kind === 'database') {
+        // Replace default rect shape with cylinder
+        // Mermaid syntax for cylinder: id[(label)]
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (lines[i].includes(`${stepAlias}["`)) {
+            lines[i] = lines[i].replace(`${stepAlias}["`, `${stepAlias}[("`).replace(`"]`, `")]`);
+            break;
+          }
+        }
       }
     });
 
