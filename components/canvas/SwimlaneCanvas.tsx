@@ -104,24 +104,40 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== 'Space' && event.key !== ' ') return;
       const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      const isInputField = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+
+      // Handle Space key for panning
+      if (event.code === 'Space' || event.key === ' ') {
+        if (isInputField) {
+          return;
+        }
+        setIsSpacePanning((prev) => {
+          if (prev) return prev;
+          event.preventDefault();
+          return true;
+        });
         return;
       }
-      setIsSpacePanning((prev) => {
-        if (prev) return prev;
-        event.preventDefault();
-        return true;
-      });
 
+      // Handle Cmd+C / Ctrl+C for copy
       if ((event.metaKey || event.ctrlKey) && event.code === 'KeyC') {
+        if (isInputField) {
+          return;
+        }
         event.preventDefault();
         copySelection();
+        return;
       }
+
+      // Handle Cmd+V / Ctrl+V for paste
       if ((event.metaKey || event.ctrlKey) && event.code === 'KeyV') {
+        if (isInputField) {
+          return;
+        }
         event.preventDefault();
         pasteClipboard();
+        return;
       }
     };
 
