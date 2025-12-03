@@ -279,7 +279,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       snapshot.updatedAt = new Date().toISOString();
       const originalLaneMeta = new Map(snapshot.lanes.map((lane) => [lane.id, { color: lane.color }]));
       const originalStepMeta = new Map(
-        snapshot.steps.map((step) => [step.id, { x: step.x, y: step.y, width: step.width, height: step.height, order: step.order, color: step.color }])
+        snapshot.steps.map((step) => [step.id, { x: step.x, y: step.y, width: step.width, height: step.height, order: step.order, color: step.color, fillColor: step.fillColor }])
       );
       const laneMap = new Map(snapshot.lanes.map((lane) => [lane.id, lane] as const));
       snapshot.lanes = snapshot.lanes
@@ -305,7 +305,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           height,
           kind: step.kind ?? 'process',
           color: step.color ?? '#000000',
-          fillColor: KIND_FILL_COLORS[(step.kind ?? 'process') as StepKind] ?? '#e0ebff',
+          fillColor: step.fillColor ?? KIND_FILL_COLORS[(step.kind ?? 'process') as StepKind] ?? '#e0ebff',
           x: preserveLayout && typeof step.x === 'number' ? step.x : 0,
           y: preserveLayout && typeof step.y === 'number' ? step.y : 0,
         };
@@ -335,6 +335,9 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         }
         if (typeof original.color === 'string' && original.color.length) {
           next.color = original.color;
+        }
+        if (typeof original.fillColor === 'string' && original.fillColor.length) {
+          next.fillColor = original.fillColor;
         }
         if (preserveLayout && typeof original.x === 'number' && Number.isFinite(original.x)) {
           next.x = original.x;

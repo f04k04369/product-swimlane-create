@@ -27,6 +27,18 @@ const KIND_COLORS: Record<StepKind, string> = {
   database: '#1f2937',
 };
 
+const KIND_FILL_COLORS: Record<StepKind, string> = {
+  process: '#e0ebff',
+  decision: '#e4c9fd',
+  start: '#c2ffd8',
+  end: '#ffd1d1',
+  file: '#fff4ad',
+  loop: '#e0ebff',
+  loopStart: '#e0ebff',
+  loopEnd: '#e0ebff',
+  database: '#e0ebff',
+};
+
 const isStepKind = (value: unknown): value is StepKind =>
   value === 'process' || value === 'decision' || value === 'start' || value === 'end' || value === 'file' || value === 'loop' || value === 'database';
 
@@ -204,6 +216,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
             ? stepMeta.y
             : defaultY;
       const color = stepMeta.color ?? KIND_COLORS[kind] ?? '#1f2937';
+      const fillColor = stepMeta.fillColor ?? KIND_FILL_COLORS[kind] ?? '#e0ebff';
 
       const step: Step = {
         id: stepId,
@@ -216,6 +229,7 @@ export const importMermaidToDiagram = (content: string): Diagram => {
         width,
         height,
         color,
+        fillColor,
         kind,
       };
       steps.push(step);
@@ -383,6 +397,7 @@ const sanitizeStep = (
     width,
     height,
     color: typeof step.color === 'string' ? step.color : KIND_COLORS[kind] ?? '#1f2937',
+    fillColor: typeof step.fillColor === 'string' ? step.fillColor : KIND_FILL_COLORS[kind] ?? '#e0ebff',
     kind,
   };
 };

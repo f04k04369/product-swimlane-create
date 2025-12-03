@@ -26,6 +26,7 @@ const stepMeta = (step: Step) =>
     width: step.width,
     height: step.height,
     color: step.color,
+    fillColor: step.fillColor,
     kind: step.kind,
   });
 
