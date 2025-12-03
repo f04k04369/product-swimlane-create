@@ -187,6 +187,10 @@ const DEFAULT_STEP_FILL: Record<string, string> = {
   start: '#ecfdf5',
   end: '#fef2f2',
   file: '#fff4ad',
+  loop: '#e0ebff',
+  loopStart: '#e0ebff',
+  loopEnd: '#e0ebff',
+  database: '#e0ebff',
 };
 
 const DEFAULT_STEP_BORDER: Record<string, string> = {
@@ -195,11 +199,16 @@ const DEFAULT_STEP_BORDER: Record<string, string> = {
   start: '#10b981',
   end: '#f97316',
   file: '#facc15',
+  loop: '#bae6fd',
+  loopStart: '#bae6fd',
+  loopEnd: '#bae6fd',
+  database: '#bae6fd',
 };
 
-const buildStepShape = (step: Step) => {
+const buildStepShape = (step: Step, orientation: 'vertical' | 'horizontal' = 'vertical') => {
   const fill = step.fillColor ?? DEFAULT_STEP_FILL[step.kind] ?? DEFAULT_STEP_FILL.process;
   const stroke = DEFAULT_STEP_BORDER[step.kind] ?? STEP_BORDER_COLOR;
+  const isHorizontal = orientation === 'horizontal';
 
   switch (step.kind) {
     case 'decision': {
@@ -228,6 +237,60 @@ const buildStepShape = (step: Step) => {
       const w = step.width;
       const h = step.height;
       return `<path d="M ${x} ${y} L ${x + w - corner} ${y} L ${x + w} ${y + corner} L ${x + w} ${y + h} L ${x} ${y + h} Z L ${x + w - corner} ${y} L ${x + w - corner} ${y + corner} L ${x + w} ${y + corner}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+    }
+    case 'loop':
+    case 'loopStart': {
+      const x = step.x;
+      const y = step.y;
+      const w = step.width;
+      const h = step.height;
+
+      if (isHorizontal) {
+        // 横型: 左から右への流れ - 左が狭く、右が広い
+        // polygon(0% 20%, 100% 0%, 100% 100%, 0% 80%)
+        const inset = h * 0.2;
+        return `<path d="M ${x} ${y + inset} L ${x + w} ${y} L ${x + w} ${y + h} L ${x} ${y + h - inset} Z" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+      } else {
+        // 縦型: 上から下への流れ - 上が狭く、下が広い
+        // polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%)
+        const inset = w * 0.2;
+        return `<path d="M ${x + inset} ${y} L ${x + w - inset} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+      }
+    }
+    case 'loopEnd': {
+      const x = step.x;
+      const y = step.y;
+      const w = step.width;
+      const h = step.height;
+
+      if (isHorizontal) {
+        // 横型: 左から右への流れ - 左が広く、右が狭い
+        // polygon(0% 0%, 100% 20%, 100% 80%, 0% 100%)
+        const inset = h * 0.2;
+        return `<path d="M ${x} ${y} L ${x + w} ${y + inset} L ${x + w} ${y + h - inset} L ${x} ${y + h} Z" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+      } else {
+        // 縦型: 上から下への流れ - 上が広く、下が狭い
+        // polygon(0% 0%, 100% 0%, 80% 100%, 20% 100%)
+        const inset = w * 0.2;
+        return `<path d="M ${x} ${y} L ${x + w} ${y} L ${x + w - inset} ${y + h} L ${x + inset} ${y + h} Z" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+      }
+    }
+    case 'database': {
+      // データベース形状（円柱）
+      const x = step.x;
+      const y = step.y;
+      const w = step.width;
+      const h = step.height;
+      const ellipseRy = h * 0.15;
+      const ellipseCy = y + ellipseRy;
+
+      // 円柱のボディパス
+      const bodyPath = `M ${x} ${ellipseCy} C ${x} ${y + ellipseRy * 0.47} ${x + w * 0.225} ${y} ${x + w * 0.5} ${y} S ${x + w} ${y + ellipseRy * 0.47} ${x + w} ${ellipseCy} V ${y + h - ellipseRy} C ${x + w} ${y + h - ellipseRy * 0.47} ${x + w * 0.775} ${y + h} ${x + w * 0.5} ${y + h} S ${x} ${y + h - ellipseRy * 0.47} ${x} ${y + h - ellipseRy} Z`;
+
+      // 上部の楕円
+      const topEllipse = `<ellipse cx="${x + w / 2}" cy="${ellipseCy}" rx="${w / 2}" ry="${ellipseRy}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
+
+      return `<path d="${bodyPath}" fill="${fill}" stroke="${stroke}" stroke-width="2"/>${topEllipse}`;
     }
     default:
       return `<rect x="${step.x}" y="${step.y}" width="${step.width}" height="${step.height}" rx="12" ry="12" fill="${fill}" stroke="${stroke}" stroke-width="2"/>`;
@@ -519,7 +582,7 @@ const buildHorizontalDiagramSvg = (diagram: Diagram, options: BuildSvgOptions = 
   adjustedSteps.forEach((step) => stepMap.set(step.id, step));
 
   adjustedSteps.forEach((step) => {
-    svgParts.push(buildStepShape(step));
+    svgParts.push(buildStepShape(step, 'horizontal'));
     svgParts.push(buildStepText(step));
   });
 
@@ -645,7 +708,7 @@ export const buildDiagramSvg = (diagram: Diagram, options: BuildSvgOptions = {})
   adjustedSteps.forEach((step) => stepMap.set(step.id, step));
 
   adjustedSteps.forEach((step) => {
-    svgParts.push(buildStepShape(step));
+    svgParts.push(buildStepShape(step, 'vertical'));
     svgParts.push(buildStepText(step));
   });
 
