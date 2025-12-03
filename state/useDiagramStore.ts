@@ -279,7 +279,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
       snapshot.updatedAt = new Date().toISOString();
       const originalLaneMeta = new Map(snapshot.lanes.map((lane) => [lane.id, { color: lane.color }]));
       const originalStepMeta = new Map(
-        snapshot.steps.map((step) => [step.id, { x: step.x, y: step.y, width: step.width, height: step.height, order: step.order, color: step.color }])
+        snapshot.steps.map((step) => [step.id, { x: step.x, y: step.y, width: step.width, height: step.height, order: step.order, color: step.color, fillColor: step.fillColor }])
       );
       const laneMap = new Map(snapshot.lanes.map((lane) => [lane.id, lane] as const));
       snapshot.lanes = snapshot.lanes
@@ -305,7 +305,7 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
           height,
           kind: step.kind ?? 'process',
           color: step.color ?? '#000000',
-          fillColor: KIND_FILL_COLORS[(step.kind ?? 'process') as StepKind] ?? '#e0ebff',
+          fillColor: step.fillColor ?? KIND_FILL_COLORS[(step.kind ?? 'process') as StepKind] ?? '#e0ebff',
           x: preserveLayout && typeof step.x === 'number' ? step.x : 0,
           y: preserveLayout && typeof step.y === 'number' ? step.y : 0,
         };
@@ -335,6 +335,9 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         }
         if (typeof original.color === 'string' && original.color.length) {
           next.color = original.color;
+        }
+        if (typeof original.fillColor === 'string' && original.fillColor.length) {
+          next.fillColor = original.fillColor;
         }
         if (preserveLayout && typeof original.x === 'number' && Number.isFinite(original.x)) {
           next.x = original.x;
@@ -855,37 +858,72 @@ export const useDiagramStore = create<DiagramStore>((set, get) => {
         const connection = draft.connections.find((edge) => edge.id === connectionId);
         if (!connection) return;
 
+        // ソースとターゲットを入れ替え
         const nextSourceId = connection.targetId;
         const nextTargetId = connection.sourceId;
-        const convertHandle = (handle: string | undefined, kind: 'source' | 'target') => {
-          if (!handle) return null;
-          if (handle.endsWith('-source')) {
-            return kind === 'source' ? handle : handle.replace(/-source$/, '-target');
+
+        // ハンドルID変換関数
+        // 新形式: ${id}-{direction}-{type} (例: stepId-top-source, stepId-bottom-target)
+        // 旧形式: {direction} または {direction}-{type} (例: top, bottom-target)
+        const convertHandle = (handleId: string | undefined, newStepId: string, isSource: boolean): string | undefined => {
+          if (!handleId) return undefined;
+
+          // 新形式のハンドルID（${id}-direction-type）をパース
+          const newFormatMatch = handleId.match(/^(.+)-(top|bottom|left|right)-(source|target)$/);
+          if (newFormatMatch) {
+            const [, , direction, type] = newFormatMatch;
+            // source <-> target を入れ替え
+            const newType = type === 'source' ? 'target' : 'source';
+            return `${newStepId}-${direction}-${newType}`;
           }
-          if (handle.endsWith('-target')) {
-            return kind === 'target' ? handle : handle.replace(/-target$/, '-source');
+
+          // 旧形式のハンドルID（direction または direction-type）をパース
+          const oldFormatMatch = handleId.match(/^(top|bottom|left|right)(?:-(source|target))?$/);
+          if (oldFormatMatch) {
+            const [, direction, type] = oldFormatMatch;
+            if (type) {
+              // direction-type形式
+              const newType = type === 'source' ? 'target' : 'source';
+              return `${newStepId}-${direction}-${newType}`;
+            }
+            // direction のみの場合は、sourceかtargetかを判断
+            // 反転前がsourceだったかtargetだったかに基づいて決定
+            const newType = isSource ? 'source' : 'target';
+            return `${newStepId}-${direction}-${newType}`;
           }
-          return handle;
+
+          // パターンにマッチしない場合はそのまま返す
+          return handleId;
         };
 
-        const nextSourceHandle = convertHandle(connection.targetHandle, 'source');
-        const nextTargetHandle = convertHandle(connection.sourceHandle, 'target');
+        // ハンドルを変換して入れ替え
+        // targetHandleが新しいsourceHandleになる（targetステップがsourceになるため）
+        const nextSourceHandle = convertHandle(connection.targetHandle, nextSourceId, true);
+        const nextTargetHandle = convertHandle(connection.sourceHandle, nextTargetId, false);
 
+        // マーカーは入れ替えずに保持（矢印の向きを維持）
+        // 反転後も矢印はtarget側に表示されるべき
+        const nextStartMarker = connection.startMarker ?? 'none';
+        const nextEndMarker = connection.endMarker ?? 'arrow';
+
+        // 重複チェック
         const duplicate = draft.connections.some(
           (edge) =>
             edge.id !== connectionId &&
             edge.sourceId === nextSourceId &&
             edge.targetId === nextTargetId &&
-            (edge.sourceHandle ?? null) === nextSourceHandle &&
-            (edge.targetHandle ?? null) === nextTargetHandle
+            (edge.sourceHandle ?? null) === (nextSourceHandle ?? null) &&
+            (edge.targetHandle ?? null) === (nextTargetHandle ?? null)
         );
         if (duplicate) return;
 
         connection.sourceId = nextSourceId;
         connection.targetId = nextTargetId;
-        connection.sourceHandle = nextSourceHandle ?? undefined;
-        connection.targetHandle = nextTargetHandle ?? undefined;
-        connection.control = connection.control ? { x: connection.control.x, y: connection.control.y } : null;
+        connection.sourceHandle = nextSourceHandle;
+        connection.targetHandle = nextTargetHandle;
+        connection.startMarker = nextStartMarker;
+        connection.endMarker = nextEndMarker;
+        // controlポイントは保持（反転時にも位置は維持）
       }, 'reverse connection', {
         action: 'reverse_connection',
         targetType: 'connection',

@@ -194,78 +194,69 @@ export const StepNode = ({ id, data, selected, dragging }: NodeProps<StepNodeDat
           )}
         </div>
       </div>
-      {kind !== 'end' && (
-        <>
-          <Handle
-            type="source"
-            id="bottom"
-            position={Position.Bottom}
-            className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
-            style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
-          />
-          <Handle
-            type="target"
-            id="bottom-target"
-            position={Position.Bottom}
-            className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
-            style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
-          />
-        </>
-      )}
-      {kind !== 'start' && (
-        <>
-          <Handle
-            type="target"
-            id="top"
-            position={Position.Top}
-            className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
-            style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
-          />
-          <Handle
-            type="source"
-            id="top-source"
-            position={Position.Top}
-            className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
-            style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
-          />
-        </>
-      )}
-      {kind !== 'start' && (
-        <Handle
-          type="target"
-          id={`${id}-left-target`}
-          position={Position.Left}
-          className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
-          style={{ top: '60%', left: -14, transform: 'translateY(-50%)', opacity: 1, pointerEvents: 'all', zIndex: 20 }}
-        />
-      )}
-      {kind !== 'end' && (
-        <Handle
-          type="source"
-          id={`${id}-left-source`}
-          position={Position.Left}
-          className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
-          style={{ top: '60%', left: -14, transform: 'translateY(-50%)', opacity: 1, pointerEvents: 'all', zIndex: 20 }}
-        />
-      )}
-      {kind !== 'start' && (
-        <Handle
-          type="target"
-          id={`${id}-right-target`}
-          position={Position.Right}
-          className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
-          style={{ top: '60%', right: -14, transform: 'translateY(-50%)', opacity: 1, pointerEvents: 'all', zIndex: 20 }}
-        />
-      )}
-      {kind !== 'end' && (
-        <Handle
-          type="source"
-          id={`${id}-right-source`}
-          position={Position.Right}
-          className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
-          style={{ top: '60%', right: -14, transform: 'translateY(-50%)', opacity: 1, pointerEvents: 'all', zIndex: 20 }}
-        />
-      )}
+      {/* 上部ハンドル - 全ステップに配置 */}
+      <Handle
+        type="target"
+        id={`${id}-top-target`}
+        position={Position.Top}
+        className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
+        style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
+      />
+      <Handle
+        type="source"
+        id={`${id}-top-source`}
+        position={Position.Top}
+        className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
+        style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
+      />
+
+      {/* 下部ハンドル - 全ステップに配置 */}
+      <Handle
+        type="source"
+        id={`${id}-bottom-source`}
+        position={Position.Bottom}
+        className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
+        style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
+      />
+      <Handle
+        type="target"
+        id={`${id}-bottom-target`}
+        position={Position.Bottom}
+        className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
+        style={{ opacity: 1, pointerEvents: 'all', zIndex: 20 }}
+      />
+
+      {/* 左側ハンドル - 全ステップに配置 */}
+      <Handle
+        type="target"
+        id={`${id}-left-target`}
+        position={Position.Left}
+        className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
+        style={{ top: '60%', left: -14, transform: 'translateY(-50%)', opacity: 1, pointerEvents: 'all', zIndex: 20 }}
+      />
+      <Handle
+        type="source"
+        id={`${id}-left-source`}
+        position={Position.Left}
+        className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
+        style={{ top: '60%', left: -14, transform: 'translateY(-50%)', opacity: 1, pointerEvents: 'all', zIndex: 20 }}
+      />
+
+      {/* 右側ハンドル - 全ステップに配置 */}
+      <Handle
+        type="target"
+        id={`${id}-right-target`}
+        position={Position.Right}
+        className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
+        style={{ top: '60%', right: -14, transform: 'translateY(-50%)', opacity: 1, pointerEvents: 'all', zIndex: 20 }}
+      />
+      <Handle
+        type="source"
+        id={`${id}-right-source`}
+        position={Position.Right}
+        className="!h-4 !w-4 !bg-primary !border !border-white !shadow"
+        style={{ top: '60%', right: -14, transform: 'translateY(-50%)', opacity: 1, pointerEvents: 'all', zIndex: 20 }}
+      />
 
       {/* リサイズ用四隅ハンドル（選択時のみ表示） */}
       {selected && (
