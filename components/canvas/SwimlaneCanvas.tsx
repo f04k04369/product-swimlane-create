@@ -763,6 +763,16 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
     [diagram.connections, selection.connections]
   );
 
+  const handleNodeDrag = useCallback(
+    (_: unknown, node: Node) => {
+      if (node.type !== 'step') return;
+
+      // ドラッグ中はリアルタイムで位置を更新（スナップなし）
+      moveStep(node.id, node.position.x, node.position.y);
+    },
+    [moveStep]
+  );
+
   const handleNodeDragStop = useCallback(
     (_: unknown, node: Node) => {
       if (node.type !== 'step') return;
@@ -1005,6 +1015,7 @@ export const SwimlaneCanvas = ({ canvasRef }: SwimlaneCanvasProps) => {
         panOnScroll
         zoomOnScroll
         zoomActivationKeyCode={null}
+        onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
         onConnect={handleConnect}
         onEdgeUpdate={handleEdgeUpdate}
