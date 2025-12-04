@@ -84,44 +84,44 @@ export const KeyEdge = memo(
         ];
       };
 
-        const points = buildPoints();
+      const points = buildPoints();
 
-        const computePolylineMidpoint = (polyline: Array<{ x: number; y: number }>) => {
-          if (polyline.length <= 2) {
-            const start = polyline[0];
-            const end = polyline.at(-1) ?? start;
+      const computePolylineMidpoint = (polyline: Array<{ x: number; y: number }>) => {
+        if (polyline.length <= 2) {
+          const start = polyline[0];
+          const end = polyline.at(-1) ?? start;
+          return {
+            x: (start.x + end.x) / 2,
+            y: (start.y + end.y) / 2,
+          };
+        }
+        let total = 0;
+        const segments: Array<{ length: number; start: { x: number; y: number }; end: { x: number; y: number } }> = [];
+        for (let i = 0; i < polyline.length - 1; i += 1) {
+          const start = polyline[i];
+          const end = polyline[i + 1];
+          const length = Math.hypot(end.x - start.x, end.y - start.y);
+          total += length;
+          segments.push({ length, start, end });
+        }
+        if (total === 0) {
+          const start = polyline[0];
+          return { x: start.x, y: start.y };
+        }
+        let distance = total / 2;
+        for (const seg of segments) {
+          if (distance <= seg.length) {
+            const ratio = distance / seg.length;
             return {
-              x: (start.x + end.x) / 2,
-              y: (start.y + end.y) / 2,
+              x: seg.start.x + (seg.end.x - seg.start.x) * ratio,
+              y: seg.start.y + (seg.end.y - seg.start.y) * ratio,
             };
           }
-          let total = 0;
-          const segments: Array<{ length: number; start: { x: number; y: number }; end: { x: number; y: number } }> = [];
-          for (let i = 0; i < polyline.length - 1; i += 1) {
-            const start = polyline[i];
-            const end = polyline[i + 1];
-            const length = Math.hypot(end.x - start.x, end.y - start.y);
-            total += length;
-            segments.push({ length, start, end });
-          }
-          if (total === 0) {
-            const start = polyline[0];
-            return { x: start.x, y: start.y };
-          }
-          let distance = total / 2;
-          for (const seg of segments) {
-            if (distance <= seg.length) {
-              const ratio = distance / seg.length;
-              return {
-                x: seg.start.x + (seg.end.x - seg.start.x) * ratio,
-                y: seg.start.y + (seg.end.y - seg.start.y) * ratio,
-              };
-            }
-            distance -= seg.length;
-          }
-          const last = segments.at(-1);
-          return last ? { x: last.end.x, y: last.end.y } : polyline[0];
-        };
+          distance -= seg.length;
+        }
+        const last = segments.at(-1);
+        return last ? { x: last.end.x, y: last.end.y } : polyline[0];
+      };
 
       const path = points
         .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
@@ -343,9 +343,8 @@ export const KeyEdge = memo(
                 pointerEvents: 'none',
                 zIndex: 9,
               }}
-              className={`max-w-[200px] whitespace-pre-wrap break-words rounded px-1 py-1 text-xs font-semibold shadow ${
-                selected ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-600'
-              }`}
+              className={`max-w-[200px] whitespace-pre-wrap break-words rounded px-1 py-1 text-xs font-semibold shadow ${selected ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-600'
+                }`}
             >
               {(data?.label ?? '').split(/\n/).map((line, index, arr) => (
                 <span key={index}>
@@ -371,7 +370,7 @@ export const KeyEdge = memo(
               className="select-none"
             >
               <span
-                className={`block h-4 w-4 rounded-full border border-white shadow ${draggingControl ? 'bg-blue-600' : 'bg-blue-500'}`}
+                className={`block h-4 w-4 rounded-full border border-white shadow ${draggingControl ? 'bg-orange-600' : 'bg-orange-500'}`}
               />
             </div>
           </EdgeLabelRenderer>
