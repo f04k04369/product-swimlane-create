@@ -101,44 +101,52 @@ export const exportDiagramToMermaid = (diagram: Diagram): string => {
       const stepAlias = `S${stepCounter++}`;
       stepAliasMap.set(step.id, stepAlias);
       const label = escapeLabel(step.title || 'Untitled step');
-      lines.push(`    ${stepAlias}["${label}"]`);
+
+      // ステップ種類に応じた形状を生成
+      let shapeLine: string;
+      switch (step.kind) {
+        case 'start':
+        case 'end':
+          // 小判形（Stadium）: (["label"])
+          shapeLine = `    ${stepAlias}(["${label}"])`;
+          break;
+
+        case 'decision':
+          // 菱形（Diamond）: {"label"}
+          shapeLine = `    ${stepAlias}{"${label}"}`;
+          break;
+
+        case 'loop':
+        case 'loopStart':
+          // 台形（Trapezoid）: [/"label"\]
+          shapeLine = `    ${stepAlias}[/"${label}"\\]`;
+          break;
+
+        case 'loopEnd':
+          // 逆台形（Inverted Trapezoid）: [\"label"/]
+          shapeLine = `    ${stepAlias}[\\"${label}"/]`;
+          break;
+
+        case 'database':
+          // 円柱（Cylinder）: [("label")]
+          shapeLine = `    ${stepAlias}[("${label}")]`;
+          break;
+
+        default:
+          // 長方形（Rectangle）: ["label"] - process, file など
+          shapeLine = `    ${stepAlias}["${label}"]`;
+      }
+
+      lines.push(shapeLine);
       lines.push(`    %% step-meta:${stepMeta(step)}`);
+
       const fillColor = STEP_KIND_FILL[step.kind] ?? '#ffffff';
       const strokeColor = lane.color || '#0ea5e9';
       const textColor = step.color || '#1f2937';
       lines.push(`    style ${stepAlias} fill:${fillColor},stroke:${strokeColor},color:${textColor}`);
+
       if (step.kind === 'file') {
         lines.push(`    class ${stepAlias} file`);
-      }
-      if (step.kind === 'loop' || step.kind === 'loopStart') {
-        // Replace default rect shape with trapezoid
-        // Mermaid syntax for trapezoid: id[/label\]
-        for (let i = lines.length - 1; i >= 0; i--) {
-          if (lines[i].includes(`${stepAlias}["`)) {
-            lines[i] = lines[i].replace(`${stepAlias}["`, `${stepAlias}[/`).replace(`"]`, `"\\]`);
-            break;
-          }
-        }
-      }
-      if (step.kind === 'loopEnd') {
-        // Replace default rect shape with inverted trapezoid
-        // Mermaid syntax for inverted trapezoid: id[\label/]
-        for (let i = lines.length - 1; i >= 0; i--) {
-          if (lines[i].includes(`${stepAlias}["`)) {
-            lines[i] = lines[i].replace(`${stepAlias}["`, `${stepAlias}[\\`).replace(`"]`, `"/]`);
-            break;
-          }
-        }
-      }
-      if (step.kind === 'database') {
-        // Replace default rect shape with cylinder
-        // Mermaid syntax for cylinder: id[(label)]
-        for (let i = lines.length - 1; i >= 0; i--) {
-          if (lines[i].includes(`${stepAlias}["`)) {
-            lines[i] = lines[i].replace(`${stepAlias}["`, `${stepAlias}[("`).replace(`"]`, `")]`);
-            break;
-          }
-        }
       }
     });
 
